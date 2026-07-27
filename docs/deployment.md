@@ -30,6 +30,13 @@ In the deploy dialog's advanced settings, pick **Python 3.11–3.13** — the
 versions the engine is tested on. Set `FORECASTLENS_SECRET` in the app's
 secrets/environment if you want the shared-secret gate.
 
+**Streamlit floor: 1.51.** The UI uses `st.navigation` for its named tabs
+(1.36+) and `width="stretch"` on charts, dataframes and the data editor.
+`st.dataframe`/`st.data_editor` accepted `width="stretch"` from 1.49, but
+`st.plotly_chart` only from **1.51** — on anything older every chart raises
+`TypeError`. `tests/unit/test_requirements_sync.py` fails if the pin in
+either dependency file drops below that, or if the installed version does.
+
 Note that Community Cloud storage is ephemeral: the SQLite result store
 resets on reboot, so treat cloud deployments as demo/exploration and export
 anything you want to keep.
