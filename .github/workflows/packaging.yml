@@ -1,0 +1,51 @@
+name: Packaging smoke test (Windows)
+
+# The packaging spike: build the hello-world Streamlit exe on a clean Windows
+# runner and assert the server actually responds. This is the highest-
+# uncertainty item in the project — it runs early and on demand, not at M10.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/packaging.yml"
+
+jobs:
+  windows-exe-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install streamlit pyinstaller
+      - name: Build hello exe (one-dir)
+        run: pyinstaller packaging/hello.spec --distpath packaging/dist --workpath packaging/build --noconfirm
+      - name: Launch exe headless and probe health endpoint
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "packaging/dist/forecastlens-hello/forecastlens-hello.exe" -PassThru -NoNewWindow
+          $ok = $false
+          foreach ($i in 1..60) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch { }
+            if ($proc.HasExited) { break }
+          }
+          if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          if (-not $ok) {
+            Write-Error "Packaged Streamlit exe never answered /_stcore/health"
+            exit 1
+          }
+          Write-Output "Packaged exe responded: packaging approach is proven."
+      - name: Report bundle size
+        shell: pwsh
+        run: |
+          $size = (Get-ChildItem packaging/dist/forecastlens-hello -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Output ("Bundle size: {0:N0} MB" -f $size)
