@@ -168,16 +168,7 @@ if "series" in what:
                out["item_code"].map(lambda c: desc_lookup.get(str(c), "")))
     frames["series"] = out.drop(columns=["series_id"])
 if "warnings" in what:
-    w = warnings.copy()
-    if "series_id" in w.columns:
-        parts = w["series_id"].fillna("").str.split("|", expand=True)
-        w["item_code"] = parts[0].replace("", pd.NA)
-        w["description"] = w["item_code"].map(
-            lambda c: desc_lookup.get(str(c), "") if pd.notna(c) else "")
-        w["line"] = parts[1] if parts.shape[1] > 1 else pd.NA
-        w["output_type"] = parts[2] if parts.shape[1] > 2 else pd.NA
-        w = w.drop(columns=["series_id"])
-    frames["warnings"] = w
+    frames["warnings"] = item_utils.expand_series_id(warnings, desc_lookup)
 
 st.caption(f"{len(scoped_series)} series in the export scope.")
 

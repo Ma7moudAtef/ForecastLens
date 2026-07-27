@@ -181,11 +181,51 @@ elif state["run_id"]:
 
 ui.section("Previous runs",
            "Every completed run is kept. You can reopen any of them from the "
-           "run picker at the top of the result pages.")
+           "run picker at the top of the result pages, or delete ones you no "
+           "longer need.")
 runs = db.load_runs(db.stamp())
 if runs.empty:
     st.info("No runs yet.")
 else:
-    ui.table(runs, "run_id identifies the run; duration_s is how long it "
-                   "took; n_series is how many forecast series it produced.",
+    display = pd.DataFrame({
+        "Run": [db.run_label(r) for r in runs.itertuples()],
+        "Status": runs["status"],
+        "Series forecast": runs["n_series"],
+        "Duration (s)": runs["duration_s"],
+        "Data file": runs["source_name"],
+    })
+    ui.table(display,
+             "Series forecast = how many item/line/output combinations this "
+             "run covered. Duration is how long it took end to end.",
              hide_index=True)
+
+    d1, d2 = st.columns(2)
+    with d1:
+        st.markdown("**Delete one run**")
+        labels = {db.run_label(r): r.run_id for r in runs.itertuples()}
+        to_delete = st.selectbox(
+            "Run to delete", list(labels),
+            help="Removes that run's forecasts, model choices and warnings. "
+                 "Your data, model overrides and mode declarations are kept.")
+        if st.button("🗑️ Delete this run",
+                     help="Permanently removes the selected run. This cannot "
+                          "be undone."):
+            db.repo().delete_run(labels[to_delete])
+            st.cache_data.clear()
+            st.success(f"Deleted {to_delete}.")
+            st.rerun()
+    with d2:
+        st.markdown("**Clear all history**")
+        confirm = st.checkbox(
+            f"Yes, delete all {len(runs)} run(s)",
+            help="Tick to enable the button. Everything every run produced is "
+                 "removed and run numbering restarts at 1; your data, model "
+                 "overrides and mode declarations are kept.")
+        if st.button("🗑️ Delete all run history", disabled=not confirm,
+                     help="Permanently removes every run. This cannot be "
+                          "undone."):
+            removed = db.repo().delete_all_runs()
+            st.cache_data.clear()
+            st.success(f"Deleted {removed} run(s). Run numbering restarts "
+                       "at 1.")
+            st.rerun()

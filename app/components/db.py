@@ -89,17 +89,28 @@ def stamp() -> float:
     return _stamp()
 
 
+def _text(value) -> str:
+    """Null-safe text. A SQL NULL read through pandas can arrive as None,
+    pd.NA or float NaN depending on the column's dtype and pandas version —
+    and `NaN or ""` returns NaN, because NaN is truthy. Always go through
+    pd.isna() rather than relying on falsiness."""
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return ""
+    return str(value).strip()
+
+
 def run_label(row) -> str:
     """What the user sees: 'Run 3 · 27 Jul 14:02 · all items'. The internal
     run identifier is never displayed."""
     number = getattr(row, "run_number", None)
-    head = f"Run {int(number)}" if number == number and number is not None \
-        else "Run"
-    name = (getattr(row, "name", "") or "").strip()
+    head = "Run"
+    if number is not None and not pd.isna(number):
+        head = f"Run {int(number)}"
+    name = _text(getattr(row, "name", ""))
     if name:
         head = f"{head} — {name}"
-    when = str(getattr(row, "created_at", ""))[:16].replace("T", " ")
-    scope = (getattr(row, "scope_note", "") or "").strip()
+    when = _text(getattr(row, "created_at", ""))[:16].replace("T", " ")
+    scope = _text(getattr(row, "scope_note", ""))
     parts = [head, when] + ([scope] if scope else [])
     return " · ".join(p for p in parts if p)
 

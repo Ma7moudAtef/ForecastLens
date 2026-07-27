@@ -70,6 +70,12 @@ while working.
    - Runs appear as **Run 1, Run 2, …** with their date and what they
      covered. Every run is kept, so you can switch back at any time; items a
      run did not cover keep the results of the run that last included them.
+   - The **Previous runs** section lists them all and lets you **delete a
+     single run** or **clear the whole history** (tick the confirmation box
+     first). Deleting removes that run's forecasts, model choices and
+     warnings — your data, model overrides and mode declarations are kept.
+     Run numbers are never reused or shifted; clearing everything restarts
+     numbering at 1.
 4. **Explorer** — pick items **by description** (the code follows after the
    dash, and searching by code still works). Omit a dimension to combine
    across it; combined rates are always driver-weighted. A single item shows

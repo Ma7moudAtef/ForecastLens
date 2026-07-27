@@ -163,6 +163,76 @@ def test_data_page_preloads_default_workbook():
         "default workbook was not preloaded"
 
 
+def test_configure_run_offers_scope_and_delete_controls():
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=300).run()
+    assert not at.exception
+
+    scope = next(r for r in at.radio if r.label == "Run scope")
+    assert scope.options == ["All materials", "A single item",
+                             "A list of items"]
+
+    buttons = " ".join(b.label for b in at.button)
+    assert "Delete this run" in buttons
+    assert "Delete all run history" in buttons
+
+
+def test_deleting_a_run_removes_it_from_the_picker(tmp_path, monkeypatch):
+    """End-to-end: press the delete button, the run disappears everywhere."""
+    import shutil
+
+    from app.components import db as app_db
+
+    # work on a copy so the shared pipeline database stays intact
+    source = app_db.db_path()
+    copy = tmp_path / "copy.db"
+    shutil.copy(source, copy)
+    monkeypatch.setenv("FORECASTLENS_DB", str(copy))
+
+    with app_db.repo() as repo:
+        before = repo.list_runs()
+        target = before.iloc[0]["run_id"]
+        assert len(before) >= 1
+
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=300).run()
+    assert not at.exception
+    delete = next(b for b in at.button if "Delete this run" in b.label)
+    delete.click().run()
+    assert not at.exception
+
+    with app_db.repo() as repo:
+        after = repo.list_runs()
+        assert target not in set(after["run_id"])
+        assert repo.get_selections(target).empty
+        assert repo.get_forecasts(target).empty
+
+
+def test_run_picker_survives_a_legacy_database(tmp_path, monkeypatch):
+    """A database written before run_number/scope_note existed must render,
+    not crash with 'float object has no attribute strip'."""
+    import sqlite3
+
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE run (
+            run_id TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL,
+            input_hash TEXT, source_name TEXT, config_json TEXT NOT NULL,
+            status TEXT NOT NULL, n_series INTEGER, duration_s REAL);
+        INSERT INTO run VALUES ('legacy1', NULL, '2026-01-01T00:00:00',
+                                '', '', '{}', 'complete', 820, 160.0);
+    """)
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("FORECASTLENS_DB", str(db))
+
+    for view in ("portfolio.py", "explorer.py"):
+        at = AppTest.from_file(str(APP / "views" / view),
+                               default_timeout=180).run()
+        assert not at.exception, f"{view}: {at.exception}"
+
+
 def test_data_source_choice_is_sticky_across_reruns():
     """Requirement: once the user picks a source it stays picked — a rerun
     must not snap them back onto the default workbook."""

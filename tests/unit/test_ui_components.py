@@ -43,6 +43,28 @@ def test_description_lookup_handles_both_column_names():
     assert item_utils.description_lookup(pd.DataFrame()) == {}
 
 
+def test_expand_series_id_on_an_empty_frame():
+    """Regression: splitting an empty column yields a frame with NO columns,
+    so naive positional indexing raised KeyError — which broke the export
+    whenever a run had zero warnings."""
+    empty = pd.DataFrame(columns=["series_id", "code", "message"])
+    out = item_utils.expand_series_id(empty, {"a": "Widget"})
+    assert "series_id" not in out.columns
+    assert {"item_code", "description", "line", "output_type"} <= set(out.columns)
+    assert out.empty
+
+
+def test_expand_series_id_populates_identity_columns():
+    df = pd.DataFrame([{"series_id": "a|L1|X", "code": "W", "message": "m"},
+                       {"series_id": None, "code": "W2", "message": "m2"}])
+    out = item_utils.expand_series_id(df, {"a": "Widget"})
+    first = out.iloc[0]
+    assert (first["item_code"], first["description"], first["line"],
+            first["output_type"]) == ("a", "Widget", "L1", "X")
+    assert pd.isna(out.iloc[1]["item_code"])     # workbook-level warning
+    assert "series_id" not in out.columns
+
+
 def test_add_identity_replaces_series_id_with_four_columns():
     series = pd.DataFrame([{"series_id": "a|L1|X", "item_code": "a",
                             "line": "L1", "output_type": "X"}])

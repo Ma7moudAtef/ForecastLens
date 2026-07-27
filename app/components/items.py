@@ -42,6 +42,29 @@ def build_labels(codes, lookup: dict[str, str]) -> dict[str, str]:
     return dict(described + bare)
 
 
+def expand_series_id(df: pd.DataFrame, lookup: dict[str, str],
+                     column: str = "series_id") -> pd.DataFrame:
+    """Replace a 'item|line|output' identifier column with the four identity
+    columns. Safe on an empty frame — splitting an empty column yields a
+    frame with no columns at all, which naive indexing turns into a
+    KeyError."""
+    out = df.copy()
+    if column not in out.columns:
+        return out
+    if out.empty:
+        out = out.drop(columns=[column])
+        for name in ID_COLS:
+            out[name] = pd.Series(dtype="object")
+        return out
+    parts = out[column].fillna("").astype(str).str.split("|", expand=True)
+    for idx, name in enumerate(["item_code", "line", "output_type"]):
+        out[name] = parts[idx].replace("", pd.NA) if idx in parts.columns \
+            else pd.NA
+    out["description"] = out["item_code"].map(
+        lambda c: lookup.get(str(c), "") if pd.notna(c) else "")
+    return out.drop(columns=[column])
+
+
 def add_identity(df: pd.DataFrame, series: pd.DataFrame,
                  items: pd.DataFrame) -> pd.DataFrame:
     """Replace series_id with code / description / line / output columns.

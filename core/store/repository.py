@@ -63,6 +63,10 @@ class Repository:
                 self.conn.execute(
                     "UPDATE run SET run_number=? WHERE run_id=?",
                     (start + offset, run_id))
+        # runs predating the scope feature necessarily covered every item
+        self.conn.execute(
+            "UPDATE run SET scope_note='all items'"
+            " WHERE scope_note IS NULL OR scope_note=''")
 
     def close(self) -> None:
         if self._conn is not None:
@@ -109,6 +113,30 @@ class Repository:
         row = self.conn.execute(
             "SELECT config_json FROM run WHERE run_id=?", (run_id,)).fetchone()
         return json.loads(row[0]) if row else {}
+
+    #: every table that carries per-run results
+    _RUN_TABLES = ("validation_result", "selection", "forecast", "warning",
+                   "accuracy_history")
+
+    def delete_run(self, run_id: str) -> None:
+        """Remove one run and everything it produced. Planner decisions
+        (model and mode overrides) and the loaded reference data are kept —
+        they are not run history."""
+        with self.conn:
+            for table in self._RUN_TABLES:
+                self.conn.execute(f"DELETE FROM {table} WHERE run_id=?",
+                                  (run_id,))
+            self.conn.execute("DELETE FROM run WHERE run_id=?", (run_id,))
+
+    def delete_all_runs(self) -> int:
+        """Clear the whole run history. Returns how many runs were removed.
+        Overrides and reference data survive; run numbering restarts at 1."""
+        with self.conn:
+            n = self.conn.execute("SELECT COUNT(*) FROM run").fetchone()[0]
+            for table in self._RUN_TABLES:
+                self.conn.execute(f"DELETE FROM {table}")
+            self.conn.execute("DELETE FROM run")
+        return int(n)
 
     def latest_complete_run_id(self) -> str | None:
         row = self.conn.execute(
