@@ -1,0 +1,42 @@
+# --- Data guard: no spreadsheets may enter the repository ---------------------
+# The confidential dataset must never be committed. Every spreadsheet extension
+# is ignored globally; the single public sample fixture is explicitly whitelisted.
+*.xlsx
+*.xlsm
+*.xlsb
+*.xls
+*.ods
+!tests/fixtures/sample_public.xlsx
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# --- Tooling ------------------------------------------------------------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- App runtime artifacts ----------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+.streamlit/secrets.toml
+
+# --- Packaging ----------------------------------------------------------------
+packaging/build/
+packaging/dist/
+*.spec.bak
+
+# --- OS noise -----------------------------------------------------------------
+.DS_Store
+Thumbs.db

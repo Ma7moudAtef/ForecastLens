@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: no-spreadsheets
+        name: Block spreadsheets outside tests/fixtures/sample_public.xlsx
+        entry: python scripts/check_spreadsheets.py
+        language: system
+        files: '\.(xlsx|xlsm|xlsb|xls|ods)$'
+      - id: pytest-fast
+        name: Fast unit tests
+        entry: python -m pytest tests/unit -q -x
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
