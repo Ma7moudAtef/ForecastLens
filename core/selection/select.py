@@ -261,8 +261,15 @@ def _instantiate_by_name(name: str, cfg: EngineConfig,
     return simple.get(name)
 
 
+_VALIDATION_COLUMNS = ["run_id", "series_id", "model_name", "window", "mase",
+                       "mae", "rmse", "mape", "smape", "n_origins",
+                       "fit_seconds", "status", "fail_reason"]
+
+
 def results_to_frame(run_id: str, sel: SelectionResult) -> pd.DataFrame:
-    """Flatten candidate CV results for the validation_result table."""
+    """Flatten candidate CV results for the validation_result table. Always
+    returns the full column set, even with zero candidates (routed and
+    cold-start series skip the competition entirely)."""
     rows = []
     for r in sel.candidates:
         rows.append({
@@ -273,4 +280,4 @@ def results_to_frame(run_id: str, sel: SelectionResult) -> pd.DataFrame:
             "n_origins": r.n_origins, "fit_seconds": r.fit_seconds,
             "status": r.status, "fail_reason": r.fail_reason,
         })
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=_VALIDATION_COLUMNS)

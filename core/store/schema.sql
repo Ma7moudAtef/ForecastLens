@@ -131,6 +131,10 @@ CREATE TABLE IF NOT EXISTS forecast (
     upper_95             REAL,
     driver_plan          REAL,
     reconstructed_demand REAL,          -- NULL when no driver plan exists
+    demand_lower_80      REAL,
+    demand_upper_80      REAL,
+    demand_lower_95      REAL,
+    demand_upper_95      REAL,
     confidence           REAL,
     PRIMARY KEY (run_id, series_id, period)
 );
