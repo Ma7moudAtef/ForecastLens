@@ -23,6 +23,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--name", help="run name")
     parser.add_argument("--horizon", type=int, help="forecast horizon override")
     parser.add_argument("--jobs", type=int, help="parallel workers override")
+    parser.add_argument("--items", help="comma-separated item codes to "
+                                        "forecast (default: every item)")
     args = parser.parse_args(argv)
 
     configure()
@@ -35,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
         cfg.forecast.horizon = args.horizon
     if args.jobs:
         cfg.n_jobs = args.jobs
+    if args.items:
+        cfg.scope.item_codes = [c.strip() for c in args.items.split(",")
+                                if c.strip()]
 
     def progress(stage: str, fraction: float) -> None:
         log.info("[%3.0f%%] %s", fraction * 100, stage)

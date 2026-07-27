@@ -62,6 +62,32 @@ def test_actuals_import_updates_accuracy_history(tmp_path):
     assert (acc["abs_pct_error"] < 15).all()
 
 
+def test_cli_entry_point_imports_actuals(tmp_path):
+    """The Accuracy tab was removed from the UI; the CLI is how accuracy
+    history is maintained, so it must actually work."""
+    from cli.import_actuals import main
+
+    history = tmp_path / "history.xlsx"
+    actuals = tmp_path / "actuals.xlsx"
+    db = tmp_path / "r.db"
+    _write_workbook(history, months=24)
+    _write_workbook(actuals, months=30)
+    run_forecast(history, EngineConfig(forecast={"horizon": 6}), db_path=db)
+
+    exit_code = main(["--input", str(actuals), "--db", str(db)])
+    assert exit_code == 0
+    with Repository(db) as repo:
+        assert len(repo.get_accuracy()) == 6
+
+
+def test_cli_reports_when_there_is_no_run(tmp_path):
+    from cli.import_actuals import main
+
+    wb = tmp_path / "wb.xlsx"
+    _write_workbook(wb, months=12)
+    assert main(["--input", str(wb), "--db", str(tmp_path / "empty.db")]) == 1
+
+
 def test_reimport_is_idempotent(tmp_path):
     history = tmp_path / "history.xlsx"
     actuals = tmp_path / "actuals.xlsx"

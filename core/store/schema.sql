@@ -4,6 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS run (
     run_id      TEXT PRIMARY KEY,
+    run_number  INTEGER,                -- 1, 2, 3… what the user sees
     name        TEXT,
     created_at  TEXT NOT NULL,
     input_hash  TEXT,
@@ -11,7 +12,8 @@ CREATE TABLE IF NOT EXISTS run (
     config_json TEXT NOT NULL,
     status      TEXT NOT NULL,          -- running | complete | failed
     n_series    INTEGER,
-    duration_s  REAL
+    duration_s  REAL,
+    scope_note  TEXT                    -- 'all items' or the scoped subset
 );
 
 CREATE TABLE IF NOT EXISTS item (

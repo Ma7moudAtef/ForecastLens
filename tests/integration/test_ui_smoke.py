@@ -26,12 +26,16 @@ def test_page_renders_without_exception(page):
 
 def test_navigation_declares_named_tabs():
     """The entrypoint routes to named views — 'Overview' replaces the bare
-    'main' label the sidebar used to show."""
+    'main' label the sidebar used to show. Accuracy is gone and Export is
+    merged into Portfolio."""
     source = (APP / "main.py").read_text(encoding="utf-8")
     for title in ["Overview", "Data", "Configure & Run", "Explorer",
-                  "Portfolio", "Accuracy", "Export"]:
+                  "Portfolio & Export"]:
         assert f'title="{title}"' in source, title
     assert "st.navigation" in source
+    assert "Accuracy" not in source
+    assert not (APP / "views" / "accuracy.py").exists()
+    assert not (APP / "views" / "export.py").exists()
 
 
 def test_overview_shows_series_counts_and_model_guide():
@@ -62,8 +66,8 @@ def test_portfolio_shows_badge_tiles_and_identity_columns():
                            default_timeout=180).run()
     assert not at.exception
     assert len(at.metric) == 5
-    sort_options = at.selectbox[-1].options
-    assert "description" in sort_options
+    sort_by = next(s for s in at.selectbox if s.label == "Sort by")
+    assert "description" in sort_by.options
 
 
 @pytest.mark.parametrize("view", [p for p in VIEWS
@@ -111,16 +115,18 @@ def test_relative_item_charts_cons_rate_by_default():
     assert view_radio[0].value == view_radio[0].options[0]  # rate is default
 
 
-def test_export_builds_downloads_with_identity_columns():
-    """Export renders download buttons rather than tables; its payload is
-    built through add_identity, verified directly here."""
+def test_portfolio_carries_the_merged_export_section():
+    """Export lives on the Portfolio page now: the Excel workbook and the
+    single-table CSV are both offered there."""
     from app.components import db as app_db
     from app.components import items as item_utils
 
-    at = AppTest.from_file(str(APP / "views" / "export.py"),
+    at = AppTest.from_file(str(APP / "views" / "portfolio.py"),
                            default_timeout=180).run()
     assert not at.exception
-    assert len(at.download_button) >= 1, "no export download offered"
+    labels = " ".join(b.label for b in at.download_button)
+    assert "Excel workbook" in labels, labels
+    assert "CSV" in labels, labels
 
     stamp = app_db.stamp()
     run_id = app_db.repo().latest_complete_run_id()
@@ -133,6 +139,21 @@ def test_export_builds_downloads_with_identity_columns():
     assert payload["description"].str.len().gt(0).any()
 
 
+def test_run_picker_shows_friendly_numbers_not_identifiers():
+    """Requirement: users see 'Run 1', 'Run 2'… never the internal id."""
+    from app.components import db as app_db
+
+    at = AppTest.from_file(str(APP / "views" / "portfolio.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    run_options = at.selectbox[0].options
+    assert run_options, "no run picker"
+    run_ids = set(app_db.load_runs(app_db.stamp())["run_id"])
+    for option in run_options:
+        assert option.startswith("Run "), option
+        assert not any(rid in option for rid in run_ids), option
+
+
 def test_data_page_preloads_default_workbook():
     at = AppTest.from_file(str(APP / "views" / "data.py"),
                            default_timeout=300).run()
@@ -140,3 +161,21 @@ def test_data_page_preloads_default_workbook():
     # summary metrics render, meaning a workbook was loaded with no user input
     assert any(m.value == "820" for m in at.metric), \
         "default workbook was not preloaded"
+
+
+def test_data_source_choice_is_sticky_across_reruns():
+    """Requirement: once the user picks a source it stays picked — a rerun
+    must not snap them back onto the default workbook."""
+    at = AppTest.from_file(str(APP / "views" / "data.py"),
+                           default_timeout=300).run()
+    assert not at.exception
+    source = at.radio[0]
+    assert source.value.startswith("📦"), source.value
+
+    other = next(o for o in source.options if o.startswith("📂"))
+    source.set_value(other).run()
+    assert at.radio[0].value == other, "choice lost on the same rerun"
+
+    at.run()   # a further rerun, as any widget interaction would cause
+    assert at.radio[0].value == other, "choice reverted to the default"
+    assert at.session_state["data_source_choice"] == other

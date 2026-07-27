@@ -13,11 +13,24 @@ import time
 
 import streamlit as st
 
-from app.components import db, filebrowser, paths, run_state, ui
+import pandas as pd
+
+from app.components import db, filebrowser, items as item_utils, paths, run_state, ui
 from core.config import EngineConfig
 from core.models.registry import ALL_MODEL_NAMES
 
 st.title("⚙️ Configure & Run")
+
+
+@st.cache_data(show_spinner="Reading the item list…")
+def read_catalogue(path: str) -> dict[str, str]:
+    """{label: item_code} for every item in the workbook, description first."""
+    try:
+        bom = pd.read_excel(path, sheet_name="bom", engine="openpyxl")
+    except Exception:
+        return {}
+    lookup = item_utils.description_lookup(bom)
+    return item_utils.build_labels(bom["item_code"].dropna().unique(), lookup)
 
 default_path = st.session_state.get("input_path") or (
     str(paths.default_input_path()) if paths.default_input_path() else "")
@@ -38,6 +51,38 @@ input_path = picked or typed_path
 if picked:
     st.session_state["input_path"] = picked
     st.rerun()
+
+ui.section("Which materials to forecast",
+           "Run the whole catalogue, or just the items you care about right "
+           "now. A scoped run is much faster and is scored exactly the same "
+           "way — the engine still studies the full dataset, so cold-start "
+           "items keep borrowing behaviour from all their category siblings.")
+
+scope_items: list[str] = []
+scope_choice = st.radio(
+    "Run scope", ["All materials", "A single item", "A list of items"],
+    horizontal=True,
+    help="All materials = every item in the workbook. Single/list = forecast "
+         "only what you select; everything else keeps the results from its "
+         "last run.")
+
+if scope_choice != "All materials":
+    catalogue = read_catalogue(input_path) if input_path else {}
+    if not catalogue:
+        st.warning("Load a readable workbook above to choose items.")
+    elif scope_choice == "A single item":
+        pick = st.selectbox(
+            "Item (by description)", list(catalogue),
+            help="Type any part of a description or an item code to search.")
+        scope_items = [catalogue[pick]]
+    else:
+        picks = st.multiselect(
+            "Items (by description)", list(catalogue),
+            help="Pick as many as you like. Leaving this empty would forecast "
+                 "nothing, so at least one item is required.")
+        scope_items = [catalogue[p] for p in picks]
+        if not picks:
+            st.info("Select at least one item, or switch to All materials.")
 
 with st.form("config"):
     c1, c2, c3 = st.columns(3)
@@ -100,8 +145,12 @@ if submitted:
     if not input_path or not Path(input_path).exists():
         st.error("No readable workbook at that path — pick one on the Data "
                  "page or with Browse above.")
+    elif scope_choice != "All materials" and not scope_items:
+        st.error("Pick at least one item to forecast, or switch the scope to "
+                 "All materials.")
     else:
         cfg = EngineConfig(
+            scope={"item_codes": scope_items},
             granularity=granularity,
             forecast={"horizon": int(horizon)},
             gate={"min_history_competition": int(min_hist),

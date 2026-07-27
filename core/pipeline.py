@@ -259,13 +259,27 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
         analyzed = analyze_all(prep, cfg)
 
         run_id = repo.create_run(cfg.model_dump_json(), source_name=raw.source_name,
-                                 input_hash=input_hash, name=run_name)
+                                 input_hash=input_hash, name=run_name,
+                                 scope_note=cfg.scope.note())
 
         model_overrides = {
             r.series_id: r.model_name
             for r in repo.get_model_overrides().itertuples()}
         contexts = build_contexts(prep, analyzed, raw.items,
                                   raw.standard_rates, model_overrides, cfg)
+        # Scope restricts what gets FORECAST, never what gets analyzed: the
+        # category priors above were pooled from every sibling series.
+        if not cfg.scope.covers_all():
+            wanted = set(cfg.scope.item_codes)
+            in_scope = set(analyzed.loc[analyzed["item_code"].isin(wanted),
+                                        "series_id"])
+            contexts = [c for c in contexts if c.series_id in in_scope]
+            if not contexts:
+                raise RuntimeError(
+                    "the selected items produced no forecastable series: "
+                    f"{sorted(wanted)}")
+            log.info("scope: %d series across %d item(s)",
+                     len(contexts), len(wanted))
         meta_by_series = analyzed.set_index("series_id")[
             ["line", "output_type", "last_period", "forecastability",
              "data_quality", "n_reliable", "trend_strength",
@@ -299,11 +313,11 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
 
         _persist(repo, run_id, cfg, raw, prep, analyzed, ok, warnings)
         duration = time.perf_counter() - started
-        repo.finish_run(run_id, "complete", n_series=len(analyzed),
+        repo.finish_run(run_id, "complete", n_series=len(contexts),
                         duration_s=round(duration, 2))
         progress("done", 1.0)
         log.info("run %s complete: %d series (%d failed) in %.1fs",
-                 run_id, len(analyzed), len(failed), duration)
+                 run_id, len(contexts), len(failed), duration)
         return run_id
 
 

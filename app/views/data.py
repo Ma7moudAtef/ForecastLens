@@ -55,25 +55,40 @@ working = paths.working_workbook()
 active = st.session_state.get("input_path") or (
     str(paths.default_input_path()) if paths.default_input_path() else "")
 
-options = ["📦 Default workbook (preloaded)"]
-if working.exists():
-    options.append("✏️ My working copy (saved edits)")
-options += ["⬆️ Upload a file", "📂 A file on this computer"]
+DEFAULT_OPT = "📦 Default workbook (preloaded)"
+WORKING_OPT = "✏️ My working copy (saved edits)"
+UPLOAD_OPT = "⬆️ Upload a file"
+PATH_OPT = "📂 A file on this computer"
 
+options = [DEFAULT_OPT]
+if working.exists():
+    options.append(WORKING_OPT)
+options += [UPLOAD_OPT, PATH_OPT]
+
+# The choice is sticky: once the user picks a source it stays picked until
+# they change it themselves — switching pages or saving an edit must never
+# silently drop them back onto the default workbook.
+remembered = st.session_state.get("data_source_choice", DEFAULT_OPT)
+if remembered not in options:
+    remembered = DEFAULT_OPT
 choice = st.radio(
-    "Which data should the app use?", options, horizontal=True,
+    "Which data should the app use?", options,
+    index=options.index(remembered), horizontal=True,
     help="Default = the sample workbook shipped with the app. Working copy = "
          "your edited version. Upload = send a file to the app. On this "
-         "computer = point at a path, with a folder browser.")
+         "computer = point at a path, with a folder browser. Your choice is "
+         "remembered until you change it.")
+st.session_state["data_source_choice"] = choice
 
-if choice.startswith("📦") and bundled:
+if choice == DEFAULT_OPT and bundled:
     active = str(bundled)
-elif choice.startswith("✏️"):
+elif choice == WORKING_OPT:
     active = str(working)
-elif choice.startswith("⬆️"):
+elif choice == UPLOAD_OPT:
     uploaded = st.file_uploader(
         "Excel workbook (sheets: bom, consumption, prod, consumption_figs)",
         type=[e.lstrip(".") for e in app_cfg.allowed_upload_extensions],
+        key="data_upload",
         help="Only .xlsx is accepted. The file is checked against the "
              "expected schema before anything is processed.")
     if uploaded is not None:
@@ -82,17 +97,22 @@ elif choice.startswith("⬆️"):
         else:
             tmp = Path(tempfile.gettempdir()) / "forecastlens_upload.xlsx"
             tmp.write_bytes(uploaded.getvalue())
+            st.session_state["uploaded_path"] = str(tmp)
             active = str(tmp)
+    elif st.session_state.get("uploaded_path"):
+        # keep the previously uploaded file across page switches
+        active = st.session_state["uploaded_path"]
 else:
     col_path, col_browse = st.columns([4, 1])
     with col_path:
         typed = st.text_input(
-            "Workbook path", value=active,
+            "Workbook path", value=st.session_state.get("typed_path", active),
             help="Full path to an .xlsx file on the machine running the app.")
     with col_browse:
         st.write("")
         picked = filebrowser.path_picker("data_browse")
     active = picked or typed
+    st.session_state["typed_path"] = active
 
 if not active or not Path(active).exists():
     st.warning("No readable workbook selected yet.")
@@ -228,6 +248,9 @@ _frames = paths.read_workbook_sheets(Path(active))
 def _save(frames: dict[str, pd.DataFrame], note: str) -> None:
     paths.write_workbook(frames, working)
     st.session_state["input_path"] = str(working)
+    # saving IS the user choosing their working copy — move the selector
+    # there rather than letting the next rerun snap back to the default
+    st.session_state["data_source_choice"] = WORKING_OPT
     st.cache_data.clear()
     st.success(f"{note} Saved to your working copy: `{working}`")
 

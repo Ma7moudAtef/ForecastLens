@@ -89,19 +89,33 @@ def stamp() -> float:
     return _stamp()
 
 
+def run_label(row) -> str:
+    """What the user sees: 'Run 3 · 27 Jul 14:02 · all items'. The internal
+    run identifier is never displayed."""
+    number = getattr(row, "run_number", None)
+    head = f"Run {int(number)}" if number == number and number is not None \
+        else "Run"
+    name = (getattr(row, "name", "") or "").strip()
+    if name:
+        head = f"{head} — {name}"
+    when = str(getattr(row, "created_at", ""))[:16].replace("T", " ")
+    scope = (getattr(row, "scope_note", "") or "").strip()
+    parts = [head, when] + ([scope] if scope else [])
+    return " · ".join(p for p in parts if p)
+
+
 def pick_run(st_container) -> str | None:
-    """Run selector; defaults to the latest complete run."""
+    """Run selector; defaults to the most recent complete run."""
     runs = load_runs(stamp())
     complete = runs[runs["status"] == "complete"]
     if complete.empty:
         st_container.info("No completed runs yet — start one on the "
                           "Configure & Run page.")
         return None
-    labels = {
-        f"{r.name} · {r.created_at} · {r.run_id}": r.run_id
-        for r in complete.itertuples()}
+    labels = {run_label(r): r.run_id for r in complete.itertuples()}
     choice = st_container.selectbox(
         "Run", list(labels), index=0,
-        help="Which forecast batch to display. Every completed run is kept, "
-             "so you can compare a new run against an earlier one.")
+        help="Which forecast batch to display. Runs are numbered in the "
+             "order you created them, with the date and which materials "
+             "they covered.")
     return labels[choice]

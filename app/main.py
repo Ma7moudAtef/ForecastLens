@@ -28,8 +28,6 @@ nav = st.navigation([
     st.Page("views/data.py", title="Data", icon="🗂️"),
     st.Page("views/configure_run.py", title="Configure & Run", icon="⚙️"),
     st.Page("views/explorer.py", title="Explorer", icon="🔍"),
-    st.Page("views/portfolio.py", title="Portfolio", icon="📋"),
-    st.Page("views/accuracy.py", title="Accuracy", icon="🎯"),
-    st.Page("views/export.py", title="Export", icon="📤"),
+    st.Page("views/portfolio.py", title="Portfolio & Export", icon="📋"),
 ])
 nav.run()

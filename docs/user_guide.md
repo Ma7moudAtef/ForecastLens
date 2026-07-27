@@ -42,7 +42,7 @@ Every control, chart and table carries a **❓ icon**: hover it to read what
 that thing means and how to use it. You should never need this guide open
 while working.
 
-## The seven tabs
+## The five tabs
 
 1. **Overview** — where you are now: how many runs and items exist, a
    download of the sample workbook, and a plain-language guide to every
@@ -57,10 +57,19 @@ while working.
      **Extend** (append to what is there) or **Replace** (swap the table).
    - Edits are written to *your working copy* — the bundled default file is
      never modified.
+   - Whichever source you pick stays picked until you change it; saving an
+     edit moves you to your working copy.
    - Orphan items — a rate with no driver ever recorded — appear in red with
      the two ways to resolve them.
-3. **Configure & Run** — horizon (3/6/12/24), thresholds, model toggles.
-   Press Run; progress shows per stage. Runs are named and kept.
+3. **Configure & Run** — choose the **scope** first: all materials, a single
+   item, or a list of items (picked by description). A scoped run is far
+   faster and is judged exactly the same way — the engine still studies the
+   full dataset, so cold-start items keep borrowing behaviour from all their
+   category siblings; only forecasting is restricted. Then set horizon
+   (3/6/12/24), thresholds and model toggles, and press Run.
+   - Runs appear as **Run 1, Run 2, …** with their date and what they
+     covered. Every run is kept, so you can switch back at any time; items a
+     run did not cover keep the results of the run that last included them.
 4. **Explorer** — pick items **by description** (the code follows after the
    dash, and searching by code still works). Omit a dimension to combine
    across it; combined rates are always driver-weighted. A single item shows
@@ -72,14 +81,13 @@ while working.
      (`cons_rate`)** by default — that is what the engine actually models.
      Switch to *Reconstructed demand* to see rate × planned production.
    - For an **Absolute** item the chart shows consumption quantity.
-5. **Portfolio** — the triage screen. Badges tell you where to spend your
-   attention: data-quality issues first, then structural changes, declining
-   accuracy, manual reviews. Everything else is "automatic OK".
-6. **Accuracy** — after a few months, import newer actuals (upload or 📂
-   browse). The engine compares what it predicted with what happened, tracks
-   error over time and raises drift alerts.
-7. **Export** — Excel/CSV of anything you see. Every exported row carries
-   item code, description, line and output type as separate columns.
+5. **Portfolio & Export** — the triage screen. Badges tell you where to
+   spend your attention: data-quality issues first, then structural changes,
+   declining accuracy, manual reviews. Everything else is "automatic OK".
+   The same page exports the results: the filtered table as CSV, or the full
+   Excel workbook (forecasts, selections, series profiles, warnings). Every
+   exported row carries item code, description, line and output type as
+   separate columns.
 
 ## Reading a forecast
 
@@ -97,3 +105,16 @@ If you know something the data doesn't, override the model on the Explorer
 page with a reason. The override is locked across future runs until you clear
 it. The competition table stays visible so you can check your choice against
 the evidence at any time.
+
+## Tracking accuracy against actuals
+
+Forecast-vs-actual tracking is not one of the app's tabs. The engine still
+does it, from the command line:
+
+```bash
+python -m cli.import_actuals --input newer_data.xlsx --db forecastlens.db
+```
+
+This compares the latest run's forecasts with what actually happened, records
+the error per period, and flags series whose accuracy is drifting. That
+history feeds the Portfolio page's *confidence declining* badge.

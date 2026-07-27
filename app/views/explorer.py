@@ -29,12 +29,21 @@ run_id = db.pick_run(st)
 if run_id is None:
     st.stop()
 
-series = db.load_series(db.stamp())
+all_series = db.load_series(db.stamp())
 selections = db.load_selections(db.stamp(), run_id)
 forecasts = db.load_forecasts(db.stamp(), run_id)
 observations = db.load_observations(db.stamp())
 bom_items = db.load_items(db.stamp())
 desc_lookup = item_utils.description_lookup(bom_items)
+
+# A run may have been scoped to some items only — offer what it produced.
+series = all_series[all_series["series_id"].isin(selections["series_id"])]
+if series.empty:
+    st.warning("This run produced no results.")
+    st.stop()
+if len(series) < len(all_series):
+    st.caption(f"This run covered {len(series)} of {len(all_series)} series "
+               "— the others were not part of its scope.")
 
 # --- pickers ------------------------------------------------------------------
 ui.section("Choose what to look at",

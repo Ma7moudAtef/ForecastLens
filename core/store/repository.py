@@ -41,7 +41,28 @@ class Repository:
 
     def init_schema(self) -> None:
         self.conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was first created.
+        CREATE TABLE IF NOT EXISTS never alters an existing table."""
+        existing = {row[1] for row in
+                    self.conn.execute("PRAGMA table_info(run)")}
+        for column, ddl in (("run_number", "INTEGER"), ("scope_note", "TEXT")):
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE run ADD COLUMN {column} {ddl}")
+        # backfill numbers for runs created before this column existed
+        missing = self.conn.execute(
+            "SELECT run_id FROM run WHERE run_number IS NULL"
+            " ORDER BY created_at").fetchall()
+        if missing:
+            start = self.conn.execute(
+                "SELECT COALESCE(MAX(run_number), 0) FROM run").fetchone()[0]
+            for offset, (run_id,) in enumerate(missing, start=1):
+                self.conn.execute(
+                    "UPDATE run SET run_number=? WHERE run_id=?",
+                    (start + offset, run_id))
 
     def close(self) -> None:
         if self._conn is not None:
@@ -57,13 +78,17 @@ class Repository:
 
     # --- runs ----------------------------------------------------------------
     def create_run(self, config_json: str, source_name: str = "",
-                   input_hash: str = "", name: str | None = None) -> str:
+                   input_hash: str = "", name: str | None = None,
+                   scope_note: str = "") -> str:
         run_id = uuid.uuid4().hex[:12]
+        run_number = self.conn.execute(
+            "SELECT COALESCE(MAX(run_number), 0) + 1 FROM run").fetchone()[0]
         self.conn.execute(
-            "INSERT INTO run (run_id, name, created_at, input_hash, source_name,"
-            " config_json, status) VALUES (?,?,?,?,?,?,?)",
-            (run_id, name or f"run-{run_id[:6]}", _now(), input_hash,
-             source_name, config_json, "running"))
+            "INSERT INTO run (run_id, run_number, name, created_at, input_hash,"
+            " source_name, config_json, status, scope_note)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (run_id, run_number, name or "", _now(), input_hash,
+             source_name, config_json, "running", scope_note))
         self.conn.commit()
         return run_id
 
@@ -76,8 +101,9 @@ class Repository:
 
     def list_runs(self) -> pd.DataFrame:
         return pd.read_sql_query(
-            "SELECT run_id, name, created_at, source_name, status, n_series,"
-            " duration_s FROM run ORDER BY created_at DESC", self.conn)
+            "SELECT run_id, run_number, name, created_at, source_name, status,"
+            " n_series, duration_s, scope_note FROM run"
+            " ORDER BY run_number DESC", self.conn)
 
     def get_run_config(self, run_id: str) -> dict:
         row = self.conn.execute(

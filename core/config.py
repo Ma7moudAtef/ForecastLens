@@ -94,10 +94,33 @@ class ForecastConfig(BaseModel):
         return v
 
 
+class RunScope(BaseModel):
+    """Which materials a run covers.
+
+    Empty `item_codes` means every item. Behaviour analysis always runs over
+    the FULL dataset regardless of scope, so category priors keep borrowing
+    from all siblings and the data summary stays complete — only model
+    selection and forecasting are restricted to the chosen items.
+    """
+
+    item_codes: list[str] = Field(default_factory=list)
+
+    def covers_all(self) -> bool:
+        return not self.item_codes
+
+    def note(self) -> str:
+        if self.covers_all():
+            return "all items"
+        if len(self.item_codes) == 1:
+            return f"1 item ({self.item_codes[0]})"
+        return f"{len(self.item_codes)} items"
+
+
 class EngineConfig(BaseModel):
     """Top-level configuration for one forecast run."""
 
     granularity: Granularity = Granularity.MONTHLY
+    scope: RunScope = Field(default_factory=RunScope)
     gate: GateConfig = Field(default_factory=GateConfig)
     driver: DriverConfig = Field(default_factory=DriverConfig)
     models: ModelConfig = Field(default_factory=ModelConfig)
