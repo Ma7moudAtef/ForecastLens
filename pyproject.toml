@@ -26,7 +26,11 @@ dev = [
     "pre-commit>=3.5",
 ]
 package = [
-    "pyinstaller>=6.3",
+    # Windows packaging only. The marker keeps dependency resolvers (e.g.
+    # poetry on Streamlit Community Cloud) solvable on Python versions no
+    # PyInstaller release supports yet — without it, resolution fails for
+    # any unbounded/newer Python range.
+    "pyinstaller>=6.3; python_version < '3.15'",
 ]
 
 [tool.setuptools]

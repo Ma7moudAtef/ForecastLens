@@ -1,4 +1,16 @@
 """Export — Excel/CSV downloads of forecasts, selections and warnings."""
+# --- path bootstrap ----------------------------------------------------------
+# Make the repo root importable no matter how this script is launched:
+# `streamlit run`, Streamlit Community Cloud, the frozen exe, or tests.
+# `streamlit run app/main.py` puts app/ on sys.path, NOT the project root, so
+# `from app...` / `from core...` fail without this (ModuleNotFoundError).
+import sys
+from pathlib import Path
+
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+# -----------------------------------------------------------------------------
 import io
 
 import pandas as pd

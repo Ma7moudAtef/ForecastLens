@@ -3,10 +3,36 @@
 ## 1. From source (macOS / Linux / Windows)
 
 ```bash
-pip install -e .
+pip install -r requirements.txt    # or: pip install -e .
 streamlit run app/main.py          # UI
 python -m cli.run --input data.xlsx --db results.db   # headless batch
 ```
+
+Every app script bootstraps `sys.path` itself, so `streamlit run app/main.py`
+works from a plain clone with no editable install and from any working
+directory. (Without that bootstrap, Streamlit puts `app/` — not the project
+root — on `sys.path`, and every page dies with
+`ModuleNotFoundError: No module named 'app'`.)
+
+## 1b. Streamlit Community Cloud
+
+Point the app at `app/main.py`. Dependencies come from the root
+`requirements.txt` — Community Cloud prefers it over `pyproject.toml` (its
+same-directory precedence is `uv.lock` → `Pipfile` → `environment.yml` →
+`requirements.txt` → `pyproject.toml`). Do not delete `requirements.txt`:
+without it the platform treats `pyproject.toml` as a Poetry project and
+resolves ALL extras, and the Windows-only `pyinstaller` extra makes that
+unsolvable on newer Python runtimes (this exact failure happened; the extra
+now carries a `python_version` marker as a second line of defense, and
+`tests/unit/test_requirements_sync.py` keeps the two files in sync).
+
+In the deploy dialog's advanced settings, pick **Python 3.11–3.13** — the
+versions the engine is tested on. Set `FORECASTLENS_SECRET` in the app's
+secrets/environment if you want the shared-secret gate.
+
+Note that Community Cloud storage is ephemeral: the SQLite result store
+resets on reboot, so treat cloud deployments as demo/exploration and export
+anything you want to keep.
 
 Environment variables:
 

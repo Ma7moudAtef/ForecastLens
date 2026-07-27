@@ -27,11 +27,14 @@ docs/        decisions and design notes
 ## Quick start (from source)
 
 ```bash
-pip install -e .[dev]
-pytest                          # verify
-python -m cli.run --help       # headless batch run
-streamlit run app/main.py      # UI
+pip install -r requirements.txt   # runtime only — or: pip install -e .[dev]
+streamlit run app/main.py         # UI (works from a plain clone, any cwd)
+python -m cli.run --help          # headless batch run
+pytest                            # verify (needs the [dev] extra)
 ```
+
+Deploying to Streamlit Community Cloud: entrypoint `app/main.py`; the root
+`requirements.txt` is what the platform installs — see `docs/deployment.md`.
 
 ## Data policy
 

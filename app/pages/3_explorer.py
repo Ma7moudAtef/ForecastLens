@@ -5,6 +5,18 @@ not in the group key. Selecting one atomic series opens the full detail view:
 chart with intervals and driver overlay, intelligence card, model
 competition table, plain-language reasoning, override control.
 """
+# --- path bootstrap ----------------------------------------------------------
+# Make the repo root importable no matter how this script is launched:
+# `streamlit run`, Streamlit Community Cloud, the frozen exe, or tests.
+# `streamlit run app/main.py` puts app/ on sys.path, NOT the project root, so
+# `from app...` / `from core...` fail without this (ModuleNotFoundError).
+import sys
+from pathlib import Path
+
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+# -----------------------------------------------------------------------------
 import json
 
 import pandas as pd

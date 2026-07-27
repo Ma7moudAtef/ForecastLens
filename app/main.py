@@ -1,5 +1,17 @@
 """ForecastLens — home page. All computation happens in core.pipeline;
 every page here only reads completed results from SQLite."""
+# --- path bootstrap ----------------------------------------------------------
+# Make the repo root importable no matter how this script is launched:
+# `streamlit run`, Streamlit Community Cloud, the frozen exe, or tests.
+# `streamlit run app/main.py` puts app/ on sys.path, NOT the project root, so
+# `from app...` / `from core...` fail without this (ModuleNotFoundError).
+import sys
+from pathlib import Path
+
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+# -----------------------------------------------------------------------------
 import streamlit as st
 
 from app.components import auth, db
