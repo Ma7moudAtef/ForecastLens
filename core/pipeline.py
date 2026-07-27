@@ -8,6 +8,7 @@ wrapped, failures are recorded as warnings with an explicit reason.
 from __future__ import annotations
 
 import hashlib
+import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -273,8 +274,11 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
         plan = plan_lookup(prep.driver_agg)
 
         progress("selecting and forecasting", 0.25)
-        n_jobs = cfg.n_jobs
-        results = Parallel(n_jobs=n_jobs, batch_size=16)(
+        # Frozen (PyInstaller) apps must not spawn loky worker processes —
+        # each worker would re-launch the exe. Threads are safe there;
+        # numpy/statsmodels release the GIL enough to still parallelize.
+        backend = "threading" if getattr(sys, "frozen", False) else "loky"
+        results = Parallel(n_jobs=cfg.n_jobs, batch_size=16, backend=backend)(
             delayed(_process_series)(ctx, meta_by_series[ctx.series_id], cfg, plan)
             for ctx in contexts)
 

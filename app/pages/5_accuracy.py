@@ -9,11 +9,12 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from app.components import db
+from app.components import auth, db
 from core.learn.accuracy import import_actuals
 
 st.set_page_config(page_title="Accuracy · ForecastLens", page_icon="🎯",
                    layout="wide")
+auth.require_secret()
 st.title("🎯 Accuracy")
 
 # --- import actuals -----------------------------------------------------------

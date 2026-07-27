@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from app.components import db
+from app.components import auth, db
 from core.analyze.statistics import analyze_all
 from core.config import AppConfig, EngineConfig
 from core.io.excel_source import ExcelSource
@@ -14,6 +14,7 @@ from core.validate import rules
 
 st.set_page_config(page_title="Data · ForecastLens", page_icon="🗂️",
                    layout="wide")
+auth.require_secret()
 st.title("🗂️ Data")
 
 app_cfg = AppConfig()

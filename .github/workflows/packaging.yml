@@ -49,3 +49,42 @@ jobs:
         run: |
           $size = (Get-ChildItem packaging/dist/forecastlens-hello -Recurse | Measure-Object Length -Sum).Sum / 1MB
           Write-Output ("Bundle size: {0:N0} MB" -f $size)
+
+  windows-full-app:
+    # The production bundle: build, launch headless, probe health, check the
+    # 300 MB budget (N3). Heavier, so manual dispatch only.
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pyinstaller
+      - name: Build full app (one-dir)
+        run: pyinstaller packaging/forecast.spec --distpath packaging/dist --workpath packaging/build --noconfirm
+      - name: Launch and probe health endpoint
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "packaging/dist/ForecastLens/ForecastLens.exe" -PassThru -NoNewWindow
+          $ok = $false
+          foreach ($i in 1..90) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch { }
+            if ($proc.HasExited) { break }
+          }
+          if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          if (-not $ok) { Write-Error "Full app exe never answered health"; exit 1 }
+      - name: Enforce bundle size budget (N3, 300 MB)
+        shell: pwsh
+        run: |
+          $size = (Get-ChildItem packaging/dist/ForecastLens -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Output ("Bundle size: {0:N0} MB" -f $size)
+          if ($size -gt 300) { Write-Error "Bundle exceeds 300 MB budget" ; exit 1 }

@@ -2,10 +2,11 @@
 handful a planner actually needs to look at."""
 import streamlit as st
 
-from app.components import badges, db
+from app.components import auth, badges, db
 
 st.set_page_config(page_title="Portfolio · ForecastLens", page_icon="📋",
                    layout="wide")
+auth.require_secret()
 st.title("📋 Portfolio")
 
 run_id = db.pick_run(st)

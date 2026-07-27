@@ -4,10 +4,11 @@ import io
 import pandas as pd
 import streamlit as st
 
-from app.components import db
+from app.components import auth, db
 
 st.set_page_config(page_title="Export · ForecastLens", page_icon="📤",
                    layout="wide")
+auth.require_secret()
 st.title("📤 Export")
 
 run_id = db.pick_run(st)

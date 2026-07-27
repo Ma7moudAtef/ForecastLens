@@ -2,9 +2,10 @@
 every page here only reads completed results from SQLite."""
 import streamlit as st
 
-from app.components import db
+from app.components import auth, db
 
 st.set_page_config(page_title="ForecastLens", page_icon="📈", layout="wide")
+auth.require_secret()
 
 st.title("📈 ForecastLens")
 st.caption("Adaptive consumption forecasting with plain-language reasoning")

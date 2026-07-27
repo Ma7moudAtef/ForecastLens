@@ -3,12 +3,13 @@ import time
 
 import streamlit as st
 
-from app.components import db, run_state
+from app.components import auth, db, run_state
 from core.config import EngineConfig
 from core.models.registry import ALL_MODEL_NAMES
 
 st.set_page_config(page_title="Run · ForecastLens", page_icon="⚙️",
                    layout="wide")
+auth.require_secret()
 st.title("⚙️ Configure & Run")
 
 input_path = st.text_input(

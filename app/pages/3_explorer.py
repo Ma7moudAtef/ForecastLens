@@ -10,11 +10,12 @@ import json
 import pandas as pd
 import streamlit as st
 
-from app.components import charts, db
+from app.components import auth, charts, db
 from core.forecast.aggregate import aggregate_forecasts, aggregate_observations
 
 st.set_page_config(page_title="Explorer · ForecastLens", page_icon="🔍",
                    layout="wide")
+auth.require_secret()
 st.title("🔍 Explorer")
 
 run_id = db.pick_run(st)
