@@ -1,0 +1,26 @@
+{
+  "demand_total_by_mode": {
+    "absolute": 1168.58,
+    "relative": 174.81
+  },
+  "n_forecast_rows": 9840,
+  "n_series": 820,
+  "winner_counts": {
+    "CategoryPrior": 1,
+    "DampedHolt": 5,
+    "Drift": 1,
+    "ETS": 8,
+    "Ensemble": 20,
+    "Holt": 2,
+    "HoltWinters": 45,
+    "Mean": 37,
+    "MovingAverage": 128,
+    "Naive": 185,
+    "SBA": 235,
+    "SES": 2,
+    "SeasonalNaive": 99,
+    "StandardRateAnchor": 30,
+    "Theta": 7,
+    "WeightedMovingAverage": 15
+  }
+}
