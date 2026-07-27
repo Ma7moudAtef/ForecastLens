@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "app"
 
-PAGES = [APP / "main.py", *sorted((APP / "pages").glob("[0-9]*.py"))]
+PAGES = [APP / "main.py", *sorted([p for p in (APP / "views").glob("*.py") if not p.name.startswith("__")])]
 
 
 def _first_project_import_line(tree: ast.Module) -> int | None:

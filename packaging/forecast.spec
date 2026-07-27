@@ -27,6 +27,8 @@ datas += collect_data_files("plotly")
 datas += [
     (os.path.join(root, "app"), "app"),
     (os.path.join(root, "core", "store", "schema.sql"), os.path.join("core", "store")),
+    # the default workbook the app preloads for every user
+    (os.path.join(root, "tests", "fixtures", "sample_public.xlsx"), "data"),
 ]
 
 hiddenimports = (

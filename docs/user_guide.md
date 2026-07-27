@@ -33,25 +33,53 @@ material whose rate history has holes stays Relative — gaps are flagged, not
 punished. You can declare a mode explicitly on the Data page; declarations
 always win over inference.
 
-## The six pages
+## Getting started in ten seconds
 
-1. **Data** — load and validate. Read the report top-down: fatal (blocks the
-   run), warnings (run proceeds, data flagged), info. Orphan series — a rate
-   with no driver ever recorded — appear in red with resolution options.
-2. **Configure & Run** — horizon (3/6/12/24), thresholds, model toggles.
+The default workbook is **already loaded** — open **Configure & Run** and
+press Run. Nothing needs to be uploaded first.
+
+Every control, chart and table carries a **❓ icon**: hover it to read what
+that thing means and how to use it. You should never need this guide open
+while working.
+
+## The seven tabs
+
+1. **Overview** — where you are now: how many runs and items exist, a
+   download of the sample workbook, and a plain-language guide to every
+   forecasting model the engine can choose and when it uses each one.
+2. **Data** — the default workbook is preloaded; you can also upload one,
+   or point at a path (with a 📂 folder browser). Tabs across the top show
+   **Summary**, the **Validation** report, one editable tab per sheet
+   (`bom`, `consumption`, `prod`, `consumption_figs`), and **Item modes**.
+   - Edit cells directly in the table, add rows with the ➕ row, or delete
+     selected rows, then press **💾 Save table**.
+   - **Import rows** into any sheet from another file and choose
+     **Extend** (append to what is there) or **Replace** (swap the table).
+   - Edits are written to *your working copy* — the bundled default file is
+     never modified.
+   - Orphan items — a rate with no driver ever recorded — appear in red with
+     the two ways to resolve them.
+3. **Configure & Run** — horizon (3/6/12/24), thresholds, model toggles.
    Press Run; progress shows per stage. Runs are named and kept.
-3. **Explorer** — pick any material/line/output combination. Omit a dimension
-   to combine across it (combined rates are always driver-weighted). A single
-   series shows: chart with 80%/95% bands and driver overlay, the
-   intelligence card, the full model competition, why the winner won and why
-   each loser lost, and the override control.
-4. **Portfolio** — the triage screen. Badges tell you where to spend your
+4. **Explorer** — pick items **by description** (the code follows after the
+   dash, and searching by code still works). Omit a dimension to combine
+   across it; combined rates are always driver-weighted. A single item shows
+   its code, description, line and output type, then: the chart with 80%/95%
+   bands and driver overlay, the intelligence card, the full model
+   competition, why the winner won and why each loser lost, and the override
+   control.
+   - For a **Relative** item the chart shows the **consumption rate
+     (`cons_rate`)** by default — that is what the engine actually models.
+     Switch to *Reconstructed demand* to see rate × planned production.
+   - For an **Absolute** item the chart shows consumption quantity.
+5. **Portfolio** — the triage screen. Badges tell you where to spend your
    attention: data-quality issues first, then structural changes, declining
    accuracy, manual reviews. Everything else is "automatic OK".
-5. **Accuracy** — after a few months, import newer actuals. The engine
-   compares what it predicted with what happened, tracks error over time and
-   raises drift alerts.
-6. **Export** — Excel/CSV of anything you see.
+6. **Accuracy** — after a few months, import newer actuals (upload or 📂
+   browse). The engine compares what it predicted with what happened, tracks
+   error over time and raises drift alerts.
+7. **Export** — Excel/CSV of anything you see. Every exported row carries
+   item code, description, line and output type as separate columns.
 
 ## Reading a forecast
 

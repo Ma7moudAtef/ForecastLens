@@ -100,5 +100,8 @@ def pick_run(st_container) -> str | None:
     labels = {
         f"{r.name} · {r.created_at} · {r.run_id}": r.run_id
         for r in complete.itertuples()}
-    choice = st_container.selectbox("Run", list(labels), index=0)
+    choice = st_container.selectbox(
+        "Run", list(labels), index=0,
+        help="Which forecast batch to display. Every completed run is kept, "
+             "so you can compare a new run against an earlier one.")
     return labels[choice]
