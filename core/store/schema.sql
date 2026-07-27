@@ -113,8 +113,10 @@ CREATE TABLE IF NOT EXISTS selection (
     mase            REAL,
     confidence      REAL,
     confidence_label TEXT,              -- low | medium | high
-    reason_text     TEXT,
-    rejected_json   TEXT,               -- [{model, window, mase, reason}]
+    route           TEXT,               -- compete | cold_start | routed_…
+    reason_code     TEXT,
+    reason_text     TEXT,               -- plain language, planner-readable
+    rejected_json   TEXT,               -- [{model, window, mase, status, reason}]
     is_override     INTEGER NOT NULL DEFAULT 0,
     override_reason TEXT,
     PRIMARY KEY (run_id, series_id)

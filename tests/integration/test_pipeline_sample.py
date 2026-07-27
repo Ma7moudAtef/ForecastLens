@@ -39,11 +39,23 @@ def test_every_series_has_a_selection_with_reason_or_confidence(run):
         series = repo.get_series()
     assert len(sel) == 820
     assert sel["confidence"].notna().all()
+    assert sel["reason_code"].notna().all()
     for reason in sel["reason_text"]:
-        payload = json.loads(reason)
-        assert payload["reason_code"]
-        assert payload["gate_reason"]
+        assert isinstance(reason, str) and len(reason) > 30
+        assert "MASE" not in reason           # plain language, no metric dumps
     assert set(sel["series_id"]) == set(series["series_id"])
+
+
+def test_every_rejected_candidate_has_a_reason(run):
+    with Repository(run["db"]) as repo:
+        sel = repo.get_selections(run["run_id"])
+    competed = sel[sel["route"] == "compete"]
+    assert len(competed) > 300
+    for rejected_json in competed["rejected_json"]:
+        rejected = json.loads(rejected_json)
+        assert len(rejected) >= 1
+        for cand in rejected:
+            assert cand["reason"] and len(cand["reason"]) > 15
 
 
 def test_forecasts_nonnegative_and_intervals_ordered(run):

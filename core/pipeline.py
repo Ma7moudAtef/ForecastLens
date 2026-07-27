@@ -150,8 +150,10 @@ def build_contexts(prep: PreparedData, analyzed: pd.DataFrame,
 
 def _process_series(ctx: SeriesContext, meta: dict, cfg: EngineConfig,
                     plan: dict[tuple, float]) -> dict:
-    """Select, generate and reconstruct for one series. Returns plain
+    """Select, generate, reconstruct and explain one series. Returns plain
     picklable frames. Any exception is captured, not raised."""
+    from core.explain import engine as explain
+
     try:
         sel = select_for_series(ctx, cfg)
         last_period = parse_period(meta["last_period"], cfg.granularity)
@@ -162,27 +164,61 @@ def _process_series(ctx: SeriesContext, meta: dict, cfg: EngineConfig,
         fc = reconstruct(fc, ctx.mode, meta["line"], meta["output_type"],
                          plan, cfg)
         fc.insert(0, "series_id", ctx.series_id)
-        return {
+
+        winner_res = next(
+            (r for r in sel.candidates
+             if r.name == sel.winner_name and r.window == sel.winner_window
+             and r.status == "ok"), None)
+        selection = {
             "series_id": ctx.series_id,
-            "status": "ok",
-            "selection": {
-                "series_id": ctx.series_id,
-                "model_name": sel.winner_name,
-                "window": sel.winner_window,
-                "mase": sel.mase,
-                "confidence": conf,
-                "confidence_label": confidence_label(conf),
-                "is_override": int(sel.is_override),
-                "override_reason": sel.override_reason,
-                "route": sel.route,
-                "reason_code": sel.reason_code,
-                "gate_reason": sel.gate_reason,
-                "winner_explain": sel.winner_model.explain(),
-                "winner_params": sel.winner_model.params(),
-            },
-            "validation": results_to_frame("", sel),
-            "forecast": fc,
+            "model_name": sel.winner_name,
+            "window": sel.winner_window,
+            "mase": sel.mase,
+            "n_origins": winner_res.n_origins if winner_res else 0,
+            "confidence": conf,
+            "confidence_label": confidence_label(conf),
+            "is_override": int(sel.is_override),
+            "override_reason": sel.override_reason,
+            "route": sel.route,
+            "reason_code": sel.reason_code,
+            "gate_reason": sel.gate_reason,
+            "winner_explain": sel.winner_model.explain(),
         }
+        selection["reason_text"] = explain.selection_reason(selection, meta)
+
+        validation = results_to_frame("", sel)
+        rejected = []
+        for r in sel.candidates:
+            if r.name == sel.winner_name and r.window == sel.winner_window:
+                continue
+            cand = {"model_name": r.name, "window": r.window,
+                    "mase": r.mase, "status": r.status}
+            cand["reason"] = explain.rejection_reason(
+                cand, {"mase": sel.mase}, meta)
+            rejected.append(cand)
+        selection["rejected"] = rejected
+
+        caveats: list[tuple[str, str]] = []
+        if meta.get("is_orphan"):
+            caveats.append(("ORPHAN_RECONSTRUCTION", explain.orphan_caveat(
+                meta["line"], meta["output_type"])))
+        if meta.get("mode_source") in ("declared_bom", "declared_ui"):
+            caveats.append(("DECLARED_MODE", explain.declared_mode_note(
+                ctx.mode, meta["mode_source"])))
+        if ctx.driver is not None and sel.winner_name in explain.SMOOTHING_FAMILY:
+            d = ctx.driver[ctx.valid]
+            d = d[np.isfinite(d)]
+            if len(d) >= 4 and d.mean() > 0:
+                driver_cv = float(d.std() / d.mean())
+                if driver_cv > 0.5:
+                    caveats.append(("SMOOTHING_BIAS_RISK",
+                                    explain.smoothing_bias_caveat(driver_cv)))
+        if sel.reason_code == "routed_tsb_obsolescence":
+            caveats.append(("OBSOLESCENCE_SIGNAL", explain.obsolescence_note()))
+
+        return {"series_id": ctx.series_id, "status": "ok",
+                "selection": selection, "validation": validation,
+                "forecast": fc, "caveats": caveats}
     except Exception as exc:
         log.exception("series %s failed", ctx.series_id)
         return {"series_id": ctx.series_id, "status": "failed",
@@ -231,7 +267,9 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
                                   raw.standard_rates, model_overrides, cfg)
         meta_by_series = analyzed.set_index("series_id")[
             ["line", "output_type", "last_period", "forecastability",
-             "data_quality"]].to_dict("index")
+             "data_quality", "n_reliable", "trend_strength",
+             "seasonality_strength", "is_orphan", "mode",
+             "mode_source"]].to_dict("index")
         plan = plan_lookup(prep.driver_agg)
 
         progress("selecting and forecasting", 0.25)
@@ -247,6 +285,13 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
             warnings.append(rules.ValidationWarning(
                 code="SERIES_FAILED", severity=rules.Severity.WARNING,
                 message=f"series {r['series_id']} failed: {r['error']}"))
+        for r in ok:
+            item, line, output = (r["series_id"].split("|") + [None, None])[:3]
+            for code, message in r.get("caveats", []):
+                warnings.append(rules.ValidationWarning(
+                    code=code, severity=rules.Severity.INFO, message=message,
+                    item_code=item or None, line=line or None,
+                    output_type=output or None))
 
         _persist(repo, run_id, cfg, raw, prep, analyzed, ok, warnings)
         duration = time.perf_counter() - started
@@ -291,21 +336,14 @@ def _persist(repo: Repository, run_id: str, cfg: EngineConfig, raw, prep,
         sel_rows = []
         for r in ok:
             s = r["selection"]
-            rejected = r["validation"]
             sel_rows.append({
                 "run_id": run_id, "series_id": s["series_id"],
                 "model_name": s["model_name"], "window": s["window"],
                 "mase": s["mase"], "confidence": s["confidence"],
                 "confidence_label": s["confidence_label"],
-                "reason_text": json.dumps({
-                    "route": s["route"], "reason_code": s["reason_code"],
-                    "gate_reason": s["gate_reason"],
-                    "winner_explain": s["winner_explain"],
-                    "winner_params": {k: str(v) for k, v in
-                                      (s["winner_params"] or {}).items()},
-                }),
-                "rejected_json": rejected.drop(
-                    columns=["run_id"]).to_json(orient="records"),
+                "route": s["route"], "reason_code": s["reason_code"],
+                "reason_text": s["reason_text"],
+                "rejected_json": json.dumps(s["rejected"]),
                 "is_override": s["is_override"],
                 "override_reason": s["override_reason"],
             })

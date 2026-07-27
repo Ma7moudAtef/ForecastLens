@@ -83,7 +83,5 @@ class CategoryPrior(BaseModel):
                 "n_siblings": self.n_siblings}
 
     def explain(self):
-        n_hist = len(self.y_) if self.y_ is not None else 0
-        return (f"Only {n_hist} period(s) of history; using the average "
-                f"behaviour of {self.n_siblings} similar item(s) in "
-                f"category '{self.category_name}'.")
+        return (f"Using the average behaviour of {self.n_siblings} similar "
+                f"item(s) in category '{self.category_name}'.")
