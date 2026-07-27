@@ -6,27 +6,19 @@ non-negative; the run finishes inside the 10-minute budget (N1).
 """
 import json
 import time
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from core.config import EngineConfig
-from core.pipeline import run_forecast
 from core.store.repository import Repository
-
-FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_public.xlsx"
 
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
-def run(tmp_path_factory):
-    db = tmp_path_factory.mktemp("db") / "results.db"
-    started = time.perf_counter()
-    run_id = run_forecast(FIXTURE, EngineConfig(), db_path=db, run_name="ci")
-    duration = time.perf_counter() - started
-    return {"db": db, "run_id": run_id, "duration": duration}
+def run(pipeline_run):
+    return pipeline_run
 
 
 def test_run_completes_inside_ten_minutes(run):
