@@ -22,6 +22,7 @@ from core.forecast.generate import confidence_label, confidence_score, generate
 from core.forecast.reconstruct import plan_lookup, reconstruct
 from core.io.excel_source import ExcelSource
 from core.log import get_logger
+from core.paths import is_frozen
 from core.prep.calendar import parse_period
 from core.prep.mode import Mode
 from core.prep.series_builder import PreparedData, build_series
@@ -373,7 +374,7 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
         # Frozen (PyInstaller) apps must not spawn loky worker processes —
         # each worker would re-launch the exe. Threads are safe there;
         # numpy/statsmodels release the GIL enough to still parallelize.
-        backend = "threading" if getattr(sys, "frozen", False) else "loky"
+        backend = "threading" if is_frozen() else "loky"
         results: list[dict] = []
         fit_started = time.perf_counter()
         with Parallel(n_jobs=cfg.n_jobs, batch_size=8, backend=backend) as pool:

@@ -32,6 +32,9 @@ htmlcov/
 *.sqlite3
 .streamlit/secrets.toml
 
+# --- Generated build stamp (written by CI, never committed) -------------------
+core/_build_info.py
+
 # --- Packaging ----------------------------------------------------------------
 packaging/build/
 packaging/dist/

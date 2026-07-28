@@ -32,9 +32,8 @@ MAX_ENTRIES = 8
 
 
 def cache_dir() -> Path:
-    d = paths.data_dir() / "cache"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """core.paths owns the location; this is only a named re-export."""
+    return paths.cache_dir()
 
 
 def fingerprint(path: Path, cfg: EngineConfig,

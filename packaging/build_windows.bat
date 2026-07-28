@@ -14,12 +14,12 @@ echo === Building one-dir bundle ===
 pyinstaller packaging\forecast.spec --noconfirm --distpath packaging\dist --workpath packaging\build || exit /b 1
 
 echo === Adding launcher ===
-copy /y packaging\launcher.bat packaging\dist\ForecastLens\ForecastLens-Start.bat || exit /b 1
+copy /y packaging\launcher.bat packaging\dist\ForecastEngine\ForecastEngine-Start.bat || exit /b 1
 
 echo === Zipping ===
-powershell -NoProfile -Command "Compress-Archive -Path 'packaging/dist/ForecastLens' -DestinationPath 'packaging/dist/ForecastLens.zip' -Force" || exit /b 1
+powershell -NoProfile -Command "Compress-Archive -Path 'packaging/dist/ForecastEngine' -DestinationPath 'packaging/dist/ForecastEngine.zip' -Force" || exit /b 1
 
 echo.
-echo Done: packaging\dist\ForecastLens.zip
-echo Unzip anywhere, run ForecastLens-Start.bat. No install, no admin.
+echo Done: packaging\dist\ForecastEngine.zip
+echo Unzip anywhere, run ForecastEngine-Start.bat. No install, no admin.
 endlocal

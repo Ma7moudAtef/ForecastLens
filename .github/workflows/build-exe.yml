@@ -1,0 +1,157 @@
+name: Build Windows EXE
+
+# Every merged change rebuilds, a button rebuilds on demand, and a version
+# tag publishes. A build is only publishable if the packaged app produces
+# the SAME results as the source version — see the parity step below.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      run_parity:
+        description: "Run the exe/source parity suite (slower, recommended)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write        # needed to attach the zip to a Release
+
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # so the build stamp can read the commit
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .[dev]
+          pip install pyinstaller
+
+      - name: Stamp the build with its commit and timestamp
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}".Substring(0,12)
+          $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          python -c "from pathlib import Path; from core.version import write_build_info; write_build_info(Path('core/_build_info.py'), '$sha', '$now')"
+          Get-Content core/_build_info.py
+          "BUILD_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build one-dir bundle
+        run: pyinstaller packaging/forecast.spec --distpath packaging/dist --workpath packaging/build --noconfirm
+
+      - name: Add launcher
+        shell: pwsh
+        run: Copy-Item packaging/launcher.bat packaging/dist/ForecastEngine/ForecastEngine-Start.bat -Force
+
+      - name: Startup self-check (the app validates itself)
+        shell: pwsh
+        run: |
+          $exe = "packaging/dist/ForecastEngine/ForecastEngine.exe"
+          & $exe --version
+          & $exe --selfcheck
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "The packaged app failed its own startup checks"
+            exit 1
+          }
+
+      - name: Launch headless and probe the Streamlit server
+        shell: pwsh
+        run: |
+          $exe = "packaging/dist/ForecastEngine/ForecastEngine.exe"
+          $proc = Start-Process -FilePath $exe -PassThru -NoNewWindow
+          $ok = $false
+          foreach ($i in 1..90) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest -Uri "http://localhost:8501/_stcore/health" -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch { }
+            if ($proc.HasExited) { break }
+          }
+          if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          if (-not $ok) { Write-Error "The packaged app never served /_stcore/health"; exit 1 }
+          Write-Output "Streamlit server responded."
+
+      - name: Parity suite — the exe must produce the SAME results as source
+        if: github.event_name != 'workflow_dispatch' || inputs.run_parity
+        shell: pwsh
+        env:
+          FORECASTENGINE_EXE: ${{ github.workspace }}\packaging\dist\ForecastEngine\ForecastEngine.exe
+        run: |
+          pytest tests/parity -q --maxfail=1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "PARITY FAILED — the packaged app does not match the source version. Not publishing."
+            exit 1
+          }
+
+      - name: Check bundle size (N3, 300 MB)
+        shell: pwsh
+        run: |
+          $mb = (Get-ChildItem packaging/dist/ForecastEngine -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Output ("Bundle size: {0:N0} MB" -f $mb)
+          if ($mb -gt 300) { Write-Error "Bundle exceeds the 300 MB budget"; exit 1 }
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $name = "ForecastEngine-windows-${{ env.BUILD_SHA }}.zip"
+          Compress-Archive -Path packaging/dist/ForecastEngine -DestinationPath $name -Force
+          "ZIP_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ForecastEngine-windows-${{ env.BUILD_SHA }}
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Attach to the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
+
+  # Keep the artifact list short: the newest 10 builds are retained and older
+  # ones removed, so the Actions page stays readable and storage bounded.
+  prune-artifacts:
+    runs-on: ubuntu-latest
+    needs: build
+    if: always() && github.event_name != 'pull_request'
+    permissions:
+      actions: write
+    steps:
+      - name: Delete all but the 10 newest exe artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const KEEP = 10;
+            const all = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 });
+            const builds = all
+              .filter(a => a.name.startsWith('ForecastEngine-windows-') && !a.expired)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            for (const artifact of builds.slice(KEEP)) {
+              core.info(`deleting ${artifact.name} (${artifact.created_at})`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner, repo: context.repo.repo,
+                artifact_id: artifact.id });
+            }
+            core.info(`kept ${Math.min(builds.length, KEEP)} of ${builds.length}`);

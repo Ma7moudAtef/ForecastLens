@@ -1,58 +1,44 @@
-"""Data-file locations: the bundled default workbook and the user's editable
-working copy. The bundled sample is read-only; edits always land in the
-working copy."""
+"""Workbook read/write helpers for the UI.
+
+Path resolution itself lives in ONE place — `core.paths`. This module only
+re-exports those functions so existing UI code keeps working, and adds the
+workbook-shaped helpers that are specific to the Data page.
+"""
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
 
 import pandas as pd
 
-DATA_DIR_ENV = "FORECASTLENS_DATA_DIR"
+from core.paths import (  # noqa: F401  (re-exported for the UI)
+    DATA_DIR_ENVS,
+    bundled_sample,
+    cache_dir,
+    data_dir,
+    output_dir,
+    resource_path,
+    working_workbook,
+)
+
+#: kept for callers that referenced the old single-name constant
+DATA_DIR_ENV = DATA_DIR_ENVS[-1]
+
 SHEET_ORDER = ["bom", "consumption", "prod", "consumption_figs"]
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    """Only meaningful in a source checkout; the bundle root when frozen."""
+    from core.paths import bundle_root
 
-
-def bundled_sample() -> Path | None:
-    """The default workbook shipped with the app (default_input_public)."""
-    candidates = [
-        repo_root() / "tests" / "fixtures" / "sample_public.xlsx",
-    ]
-    if hasattr(sys, "_MEIPASS"):
-        candidates.insert(0, Path(sys._MEIPASS) / "data" / "sample_public.xlsx")
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
-
-
-def data_dir() -> Path:
-    base = os.environ.get(DATA_DIR_ENV)
-    if base:
-        p = Path(base)
-    elif os.name == "nt":
-        p = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ForecastLens"
-    else:
-        p = Path.home() / ".forecastlens"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def working_workbook() -> Path:
-    """The editable copy of the input data. Created on first save."""
-    return data_dir() / "working_input.xlsx"
+    return bundle_root()
 
 
 def default_input_path() -> Path | None:
     """What the app loads when the user has chosen nothing yet: their working
     copy if one exists, else the bundled default workbook."""
-    w = working_workbook()
-    if w.exists():
-        return w
+    working = working_workbook()
+    if working.exists():
+        return working
     return bundled_sample()
 
 

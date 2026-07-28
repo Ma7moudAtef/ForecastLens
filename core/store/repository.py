@@ -13,7 +13,12 @@ from pathlib import Path
 
 import pandas as pd
 
-_SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+def _schema_path() -> Path:
+    """Resolved through core.paths so the frozen build finds the bundled
+    copy rather than a path next to a module that no longer exists on disk."""
+    from core.paths import schema_sql
+
+    return schema_sql()
 
 
 def series_id_of(item_code: str, line: str | None, output_type: str | None) -> str:
@@ -40,7 +45,7 @@ class Repository:
         return self._conn
 
     def init_schema(self) -> None:
-        self.conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self.conn.executescript(_schema_path().read_text(encoding="utf-8"))
         self._migrate()
         self.conn.commit()
 

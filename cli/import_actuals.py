@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from core.config import EngineConfig
 from core.learn.accuracy import import_actuals
 from core.log import configure, get_logger
+from core.paths import db_path
 from core.store.repository import Repository
 
 log = get_logger("cli.actuals")
@@ -24,22 +26,24 @@ def main(argv: list[str] | None = None) -> int:
         description="Import actuals and update forecast accuracy history")
     parser.add_argument("--input", required=True,
                         help="workbook containing newer consumption history")
-    parser.add_argument("--db", default="forecastlens.db",
-                        help="SQLite results database")
+    parser.add_argument("--db", default=None,
+                        help="SQLite results database "
+                             "(default: the app's data folder)")
     parser.add_argument("--run", help="run id to compare against "
                                       "(default: the latest complete run)")
     args = parser.parse_args(argv)
 
     configure()
+    target = Path(args.db) if args.db else db_path()
     run_id = args.run
     if not run_id:
-        with Repository(args.db) as repo:
+        with Repository(target) as repo:
             run_id = repo.latest_complete_run_id()
         if not run_id:
             print("no completed run to compare against", file=sys.stderr)
             return 1
 
-    result = import_actuals(args.input, args.db, run_id, EngineConfig())
+    result = import_actuals(args.input, target, run_id, EngineConfig())
     log.info("matched %d forecast period(s) across %d series; %d drifting",
              result.n_matched, result.n_series, result.n_drift)
     for sid in result.drifting_series:

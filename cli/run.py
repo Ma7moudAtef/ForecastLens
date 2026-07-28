@@ -7,9 +7,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from core.config import EngineConfig
 from core.log import configure, get_logger
+from core.paths import db_path
 from core.pipeline import run_forecast
 
 log = get_logger("cli")
@@ -18,7 +20,8 @@ log = get_logger("cli")
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ForecastLens batch runner")
     parser.add_argument("--input", required=True, help="Excel workbook path")
-    parser.add_argument("--db", default="forecastlens.db", help="SQLite output path")
+    parser.add_argument("--db", default=None,
+                        help="SQLite output path (default: the app's data folder)")
     parser.add_argument("--config", help="JSON file with EngineConfig overrides")
     parser.add_argument("--name", help="run name")
     parser.add_argument("--horizon", type=int, help="forecast horizon override")
@@ -49,7 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     def progress(stage: str, fraction: float) -> None:
         log.info("[%3.0f%%] %s", fraction * 100, stage)
 
-    run_id = run_forecast(args.input, cfg, db_path=args.db,
+    target = Path(args.db) if args.db else db_path()
+    run_id = run_forecast(args.input, cfg, db_path=target,
                           progress_cb=progress, run_name=args.name,
                           log_cb=log.info)
     print(run_id)

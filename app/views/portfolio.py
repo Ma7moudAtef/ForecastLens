@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from app.components import badges, db, items as item_utils, ui
+from core.export import build_frames
 
 st.title("📋 Portfolio & Export")
 
@@ -131,9 +132,6 @@ ui.section("Export the full results",
            "Every exported row carries item code, description, line and "
            "output type as separate columns.")
 
-forecasts = db.load_forecasts(db.stamp(), run_id)
-warnings = db.load_warnings(db.stamp(), run_id)
-
 e1, e2 = st.columns(2)
 with e1:
     export_scope = st.radio(
@@ -152,25 +150,12 @@ with e2:
 
 scoped_ids = set(view["series_id"]) if export_scope.startswith("Only") \
     else set(table["series_id"])
-scoped_series = series[series["series_id"].isin(scoped_ids)]
 
-frames: dict[str, pd.DataFrame] = {}
-if "forecasts" in what:
-    frames["forecasts"] = item_utils.add_identity(
-        forecasts[forecasts["series_id"].isin(scoped_ids)], series, bom_items)
-if "selections" in what:
-    frames["selections"] = item_utils.add_identity(
-        selections[selections["series_id"].isin(scoped_ids)]
-        .drop(columns=["rejected_json"], errors="ignore"), series, bom_items)
-if "series" in what:
-    out = scoped_series.copy()
-    out.insert(1, "description",
-               out["item_code"].map(lambda c: desc_lookup.get(str(c), "")))
-    frames["series"] = out.drop(columns=["series_id"])
-if "warnings" in what:
-    frames["warnings"] = item_utils.expand_series_id(warnings, desc_lookup)
-
-st.caption(f"{len(scoped_series)} series in the export scope.")
+# Built by core.export — the identical code the CLI and the frozen exe use,
+# so a download from the web app and one from the exe are the same file.
+frames = build_frames(db.db_path(), run_id, series_ids=scoped_ids,
+                      sheets=tuple(what))
+st.caption(f"{len(scoped_ids)} series in the export scope.")
 
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:

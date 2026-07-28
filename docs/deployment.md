@@ -45,10 +45,28 @@ Environment variables:
 
 | Variable | Effect |
 |---|---|
-| `FORECASTLENS_DB` | SQLite path the UI reads/writes (default `./forecastlens.db`) |
+| `FORECASTLENS_DB` | SQLite path the UI reads/writes. Default: `forecastlens.db` inside the data folder below — never beside the code. |
+| `FORECASTENGINE_DATA_DIR` | Overrides the whole user data folder (database, working copy, cache, exports). Default: `%LOCALAPPDATA%\ForecastEngine` on Windows, `~/.local/share/ForecastEngine` on Linux, `~/Library/Application Support/ForecastEngine` on macOS. |
 | `FORECASTLENS_SECRET` | If set, every page requires this shared secret once per session |
 
+All three are resolved in exactly one module, `core.paths`. Nothing else in
+the codebase builds a path — `tests/unit/test_path_discipline.py` fails the
+build if it does, because a path built by hand is how an app that works in
+development dies as an exe.
+
 ## 2. Portable Windows executable
+
+**Builds are automatic.** Every change on `main` produces a downloadable zip;
+`docs/RELEASE.md` has the exact click-path on github.com, plus SmartScreen
+and antivirus troubleshooting. There is no need to build locally.
+
+A build is published only if the packaged app passes its own startup checks,
+serves the interface, and produces **numbers identical to the source
+version** (`tests/parity/`). A build that works but forecasts differently
+fails the pipeline.
+
+### Building locally (rarely needed)
+
 
 Built with PyInstaller in **one-dir** mode (one-file is slower to start and
 routinely quarantined by corporate antivirus). On a Windows build machine:
@@ -57,15 +75,14 @@ routinely quarantined by corporate antivirus). On a Windows build machine:
 packaging\build_windows.bat
 ```
 
-Produces `packaging\dist\ForecastLens.zip`. The user unzips anywhere and runs
-`ForecastLens-Start.bat` — no Python, no installer, no admin rights, no
-registry writes. Data lives in `%LOCALAPPDATA%\ForecastLens`.
+Produces `packaging\dist\ForecastEngine.zip`. The user unzips anywhere and
+runs `ForecastEngine-Start.bat` — no Python, no installer, no admin rights,
+no registry writes. Data lives in `%LOCALAPPDATA%\ForecastEngine`.
 
-Verification: the GitHub Actions workflow "Packaging smoke test (Windows)"
-builds the hello-world spike on every packaging change and (on manual
-dispatch) the full bundle, launches it headless on a clean `windows-latest`
-runner, probes `http://localhost:8501/_stcore/health`, and enforces the
-300 MB size budget.
+Verification happens in `.github/workflows/build-exe.yml` on a clean
+`windows-latest` runner: startup self-check, headless launch with a probe of
+`http://localhost:8501/_stcore/health`, the full parity suite, and the 300 MB
+size budget.
 
 Packaging notes baked into `packaging/forecast.spec`:
 
@@ -75,10 +92,17 @@ Packaging notes baked into `packaging/forecast.spec`:
   binary inside a bundle.
 - `multiprocessing.freeze_support()` is the first statement of the entry
   point, or the exe fork-bombs on Windows.
-- statsmodels submodules are declared as hidden imports with their data
-  collected.
+- statsmodels, scipy.special and plotly submodules are declared as hidden
+  imports with their data collected — PyInstaller cannot see imports these
+  packages resolve at runtime.
 - Frozen builds run joblib on the threading backend — worker processes would
   each re-launch the exe.
+- Everything writable (database, logs, cache, exports) goes to
+  `core.paths.data_dir()`. `sys._MEIPASS` is read-only at runtime; writing
+  beside the bundled code is the classic frozen-build failure.
+- The binary also runs headless: `--selfcheck`, `--version`, `--run-forecast`
+  and `--export`. The parity suite uses those to prove the exe and the source
+  produce identical results.
 
 ## 3. Hosted (optional)
 

@@ -18,10 +18,15 @@ if _ROOT not in sys.path:
 # -----------------------------------------------------------------------------
 import streamlit as st
 
-from app.components import auth
+from app.components import auth, footer, selfcheck_gate
 
-st.set_page_config(page_title="ForecastLens", page_icon="📈", layout="wide")
+st.set_page_config(page_title="ForecastEngine", page_icon="📈", layout="wide")
 auth.require_secret()
+
+# The launcher runs the same checks before opening a browser; repeating them
+# here covers `streamlit run` and hosted deployments, where nobody sees the
+# console. Cached so it costs nothing on every rerun.
+selfcheck_gate.enforce()
 
 nav = st.navigation([
     st.Page("views/overview.py", title="Overview", icon="🏠", default=True),
@@ -30,4 +35,9 @@ nav = st.navigation([
     st.Page("views/explorer.py", title="Explorer", icon="🔍"),
     st.Page("views/portfolio.py", title="Portfolio & Export", icon="📋"),
 ])
+
+# Build identity, shown the same way in the browser and in the exe, so a bug
+# report always names the build it came from.
+footer.render(st.sidebar)
+
 nav.run()

@@ -60,6 +60,12 @@ class GateConfig(BaseModel):
     min_cv_origins: int = Field(3, ge=2)
 
 
+def _default_db_path() -> Path:
+    from core.paths import db_path
+
+    return db_path()
+
+
 class RateConfig(BaseModel):
     """How a consumption rate is obtained for each series.
 
@@ -180,7 +186,9 @@ class EngineConfig(BaseModel):
 class AppConfig(BaseModel):
     """Application-level (non-engine) settings."""
 
-    db_path: Path = Path("forecastlens.db")
+    #: resolved through core.paths: under the user's data directory, never
+    #: beside the bundled code (which is read-only in a frozen build)
+    db_path: Path = Field(default_factory=lambda: _default_db_path())
     max_upload_mb: int = Field(100, ge=1)
     allowed_upload_extensions: tuple[str, ...] = (".xlsx",)
     shared_secret_env_var: str = "FORECASTLENS_SECRET"

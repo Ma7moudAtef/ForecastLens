@@ -2,19 +2,20 @@
 computation happens in core.pipeline, never inside a Streamlit rerun."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
+from core import paths as core_paths
 from core.store.repository import Repository
 
 DB_ENV = "FORECASTLENS_DB"
 
 
 def db_path() -> Path:
-    return Path(os.environ.get(DB_ENV, "forecastlens.db"))
+    """Single source of truth — core.paths decides where user data lives."""
+    return core_paths.db_path()
 
 
 def _stamp() -> float:
