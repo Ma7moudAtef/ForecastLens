@@ -44,6 +44,7 @@ hiddenimports = (
     + collect_submodules("app")
     + collect_submodules("statsmodels")
     + collect_submodules("scipy.special")
+    + collect_submodules("scipy.optimize")
     + [
         "streamlit",
         "streamlit.web.bootstrap",

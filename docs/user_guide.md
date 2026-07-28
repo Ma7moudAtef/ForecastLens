@@ -10,7 +10,7 @@ You never have to touch a terminal: load a workbook, press Run, read results.
 
 ## The workbook
 
-Four sheets (only the first two are mandatory):
+Five sheets (only the first two are mandatory):
 
 | Sheet | What it holds |
 |---|---|
@@ -18,6 +18,24 @@ Four sheets (only the first two are mandatory):
 | `consumption` | History: date, item, quantities, optional consumption rate. |
 | `prod` | The driver (production output, cases, orders…). May be absent entirely for trading/e-commerce businesses. |
 | `consumption_figs` | Engineered standard rates, if you have them. |
+| `context_calendar` | Optional. Things you know in advance that the driver table cannot express: promotions, campaigns, shutdowns, recipe changes. Columns: `period`, `factor_name`, `factor_value`, and optionally `unit` and `stream`. |
+
+### The context calendar
+
+One row per factor per period. Leave `unit` and `stream` blank for something
+that applies plant-wide. `factor_value` may be a number (`0`/`1` for on/off,
+or any measurement) or text (`recipe = A`), and text becomes one indicator per
+distinct value.
+
+| period | factor_name | factor_value | unit | stream |
+|---|---|---|---|---|
+| 2024-03 | promotion | 1 | | |
+| 2024-04 | promotion | 0 | | |
+| 2024-05 | campaign | 1 | line_a | |
+
+Fill in **future** periods too. The engine only uses a factor it can read for
+the periods it is forecasting — a promotion you record only in history is
+history, not a forecasting input.
 
 ## Periods when the line did not run
 
@@ -137,6 +155,11 @@ while working.
      was consumed against. History and forecast are computed the same way,
      so they sit on one scale and are directly comparable. The driver shown
      is the real production for the line, counted once, not once per item.
+   - The intelligence card also reports **operating context** for every
+     item: whether its consumption really does change with what else the
+     plant is doing, by how much, and under which conditions it has actually
+     run. This appears even when the answer is "it makes no difference here"
+     — that is worth knowing too.
 5. **Portfolio & Export** — the triage screen. Badges tell you where to
    spend your attention: data-quality issues first, then structural changes,
    declining accuracy, manual reviews. Everything else is "automatic OK".
@@ -174,3 +197,42 @@ python -m cli.import_actuals --input newer_data.xlsx --db forecastlens.db
 This compares the latest run's forecasts with what actually happened, records
 the error per period, and flags series whose accuracy is drifting. That
 history feeds the Portfolio page's *confidence declining* badge.
+
+## When consumption depends on what else is running
+
+Some materials do not depend only on their own past. A line that runs alongside
+another may consume more per tonne; a promotion week may lift usage across the
+board; a unit running at a quarter of its normal rate still needs its standing
+cleaning and heating, so its consumption *per unit of output* goes up.
+
+The engine works those conditions out for itself from the `prod` sheet — which
+units ran, which shared the plant, how hard each was pushed, how evenly output
+was spread — and adds anything you supply through the `context_calendar` sheet.
+Every item is then tested for whether its consumption actually differs between
+those conditions, and the answer appears on its intelligence card.
+
+Three extra models become available to an item only when the effect is both
+real and large enough to matter (10% by default, adjustable on Configure &
+Run):
+
+- **Fixed+Variable** — separates the standing consumption from the part that
+  scales with output. This is the model that explains why a rate rises when a
+  line runs slowly.
+- **Regime-Conditional** — a separate level per operating pattern, applied
+  according to what the plan says each future period will be.
+- **Context Regression** — a small regression on the period's conditions, at
+  most one factor per eight periods of history.
+
+They then have to win the same back-test as every other model. On the sample
+dataset 58 of 820 items showed a material effect and 12 were actually
+forecast with a context model — the rest were better served by their own
+history, and the engine says so.
+
+**What this needs from you:** a production **plan** covering the whole
+horizon. Every context factor is read from the plan, because a forecasting
+input has to be known before the period happens. Without a plan for a period,
+the engine will not guess the conditions — it withholds these models and tells
+you why on the card.
+
+If your data has one line and one output type there is nothing here to learn,
+and the whole layer switches itself off without changing a single number.

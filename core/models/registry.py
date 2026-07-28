@@ -15,6 +15,11 @@ from core.config import EngineConfig
 from core.models.averaging import MovingAverage, WeightedMovingAverage
 from core.models.base import BaseModel
 from core.models.baselines import Drift, Mean, Naive, SeasonalNaive
+from core.models.context_models import (
+    ContextRegression,
+    FixedPlusVariable,
+    RegimeConditional,
+)
 from core.models.intermittent import SBA, TSB, Croston, ZeroForecast
 from core.models.smoothing import ETS, SES, DampedHolt, Holt, HoltWinters
 from core.models.statistical import ARIMA, Theta
@@ -27,7 +32,13 @@ ALL_MODEL_NAMES = [
     "Croston", "SBA", "TSB",
     "StandardRateAnchor", "CategoryPrior",
     "Ensemble",
+    "FixedPlusVariable", "RegimeConditional", "ContextRegression",
 ]
+
+#: the models that read operating context; listed here so the UI and the
+#: gate can talk about them as a group without hardcoding names elsewhere
+CONTEXT_MODEL_NAMES = ["FixedPlusVariable", "RegimeConditional",
+                       "ContextRegression"]
 
 
 @dataclass(frozen=True)
@@ -93,6 +104,27 @@ def build_intermittent_candidates(cfg: EngineConfig) -> list[Candidate]:
         Candidate(TSB, "TSB"),
         Candidate(Croston, "Croston"),
         Candidate(ZeroForecast, "ZeroForecast"),
+    ]
+
+
+def build_context_candidates(cfg: EngineConfig,
+                             target_is_rate: bool) -> list[Candidate]:
+    """The context-aware set (models 20–22).
+
+    Offered only when the diagnostic layer found a material effect and the
+    driver plan covers the whole horizon — that decision lives in the
+    selection layer. Here they are ordinary candidates like any other; the
+    competition does not know they are different.
+    """
+    c = cfg.context
+    return [
+        Candidate(lambda: FixedPlusVariable(target_is_rate, c.min_driver_cv),
+                  "FixedPlusVariable"),
+        Candidate(lambda: RegimeConditional(c.min_regime_obs),
+                  "RegimeConditional"),
+        Candidate(lambda: ContextRegression(c.observations_per_regressor,
+                                            c.max_vif),
+                  "ContextRegression"),
     ]
 
 

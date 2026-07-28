@@ -31,6 +31,10 @@ def test_database_round_trip(source_run):
     A.assert_database_round_trip(source_run["db"])
 
 
+def test_operating_context_diagnosed(source_run):
+    A.assert_context_diagnosed(source_run["db"])
+
+
 def test_export_written(source_run):
     target = source_run["dir"] / "export_source.xlsx"
     export_workbook(source_run["db"], source_run["run_id"], target)

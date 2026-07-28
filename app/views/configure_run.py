@@ -142,6 +142,23 @@ with st.form("config"):
                  "variable production figure adds noise, and forecasting the "
                  "quantity directly is then more accurate. A supplied "
                  "cons_rate is always used exactly as given, in your units.")
+        context_enabled = st.checkbox(
+            "Use operating context", value=True,
+            help="Let the engine test whether consumption depends on what "
+                 "else the plant is doing — how many units run, which of "
+                 "them share the load, whether a promotion is on — and "
+                 "compete three context-aware models where it measurably "
+                 "does. Items are tested either way; this only controls "
+                 "whether those models may compete. On a single-line "
+                 "dataset it does nothing at all.")
+        context_materiality = st.slider(
+            "Minimum context effect to act on", 0.0, 0.50, 0.10, 0.05,
+            format="%.0f%%",
+            help="How much operating conditions must change an item's "
+                 "consumption before a context-aware model is allowed to "
+                 "compete for it. Statistical significance alone is not "
+                 "enough: on a long history a 2% difference is certain and "
+                 "worthless. Lower it to explore, raise it to be strict.")
         fast_mode = st.checkbox(
             "Fast mode", value=False,
             help="Skip the lookback-window sweep — fewer candidates, quicker "
@@ -178,6 +195,8 @@ if submitted:
             gate={"min_history_competition": int(min_hist),
                   "seasonal_min_history": int(seasonal_min)},
             rate={"derive_missing": derive_rates},
+            context={"enabled": context_enabled,
+                     "materiality": float(context_materiality)},
             models={"lookback_windows": window_sweep(w_short, w_long),
                     "disabled_models": disabled},
             fast_mode=fast_mode,

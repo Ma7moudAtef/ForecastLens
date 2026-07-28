@@ -53,6 +53,10 @@ def test_database_round_trip(exe_run):
     A.assert_database_round_trip(exe_run["db"])
 
 
+def test_operating_context_diagnosed(exe_run):
+    A.assert_context_diagnosed(exe_run["db"])
+
+
 def test_export_written(exe_run):
     """The binary must be able to export on its own — the export code lives
     in core, so the exe and the web app write the same file."""

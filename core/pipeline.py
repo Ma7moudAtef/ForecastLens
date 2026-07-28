@@ -23,7 +23,7 @@ from core.forecast.reconstruct import plan_lookup, reconstruct
 from core.io.excel_source import ExcelSource
 from core.log import get_logger
 from core.paths import is_frozen
-from core.prep.calendar import parse_period
+from core.prep.calendar import full_range, parse_period
 from core.prep.mode import Mode
 from core.prep.series_builder import PreparedData, build_series
 from core.selection.select import (
@@ -63,6 +63,59 @@ def _noop_log(message: str) -> None:
 
 def _never_cancel() -> bool:
     return False
+
+
+# --- operating context --------------------------------------------------------
+
+def series_context(context_frame, row, periods: list[str],
+                   target: np.ndarray, usable: np.ndarray,
+                   cfg: EngineConfig):
+    """One series' operating conditions: the aligned matrix a context model
+    could fit on, and the diagnosis EVERY series gets whether or not any
+    model ends up using it.
+
+    Returns (matrix | None, ContextDiagnosis). A None matrix is not an error —
+    it means this dataset has no operating variation to learn from, which is
+    the ordinary case for a single-line plant (guard G5).
+    """
+    from core.context import diagnose as ctx_diagnose
+    from core.context import matrix as ctx_matrix
+
+    if not cfg.context.enabled:
+        return None, ctx_diagnose.ContextDiagnosis(
+            skip_reason="context-aware forecasting is switched off",
+            verdict="Operating context was not examined: the feature is "
+                    "switched off for this run.")
+    if context_frame is None:
+        return None, ctx_diagnose.ContextDiagnosis(
+            skip_reason="no operating context in this dataset",
+            verdict="This dataset carries no driver activity to read "
+                    "operating conditions from.")
+    if not context_frame.has_variance:
+        return None, ctx_diagnose.ContextDiagnosis(
+            skip_reason=context_frame.note or "no operating variation",
+            verdict=(context_frame.note or "Operating conditions never "
+                     "change").capitalize() + ".")
+
+    last = parse_period(row.last_period, cfg.granularity)
+    future = [str(p) for p in
+              full_range(last + 1, last + cfg.forecast.horizon)]
+    matrix = ctx_matrix.build(context_frame, row.line, row.output_type,
+                              periods, future)
+    if matrix is None:
+        return None, ctx_diagnose.ContextDiagnosis(
+            skip_reason="this line and output appear in no driver record",
+            verdict="No driver activity is recorded for this line and "
+                    "output, so its operating conditions are unknown.")
+    diag = ctx_diagnose.diagnose(target, matrix.regimes, cfg, valid=usable)
+    if diag.material and not matrix.known_future:
+        # the effect is real but nobody has planned the horizon: say so
+        # instead of quietly dropping the models (G5 degrades, it does not
+        # hide)
+        diag.material = False
+        diag.verdict += (" Context models were still not offered because "
+                         + matrix.note + ".")
+    return matrix, diag
 
 
 # --- context assembly ---------------------------------------------------------
@@ -127,7 +180,8 @@ def _prior_for(item_code: str, mode: str, items_idx: dict, pools: dict):
 def build_contexts(prep: PreparedData, analyzed: pd.DataFrame,
                    raw_items: pd.DataFrame, standard_rates: pd.DataFrame,
                    model_overrides: dict[str, str],
-                   cfg: EngineConfig) -> list[SeriesContext]:
+                   cfg: EngineConfig,
+                   context_frame=None) -> list[SeriesContext]:
     std_lookup = {
         (r.item_code, r.line, r.output_type): float(r.std_rate)
         for r in standard_rates.itertuples() if pd.notna(r.std_rate)}
@@ -144,20 +198,25 @@ def build_contexts(prep: PreparedData, analyzed: pd.DataFrame,
         target = np.nan_to_num(g["target"].to_numpy(dtype=float), nan=0.0)
         reliable = g["is_reliable"].to_numpy(dtype=bool)
         y_fit = _interpolate_unreliable(target, reliable)
+        # periods that may actually be used: reliable, and belonging to a
+        # period where this line ran at all
+        usable = reliable.copy()
+        if "is_applicable" in g.columns:
+            usable &= g["is_applicable"].to_numpy(dtype=bool)
         driver = None
         if row.mode == Mode.RELATIVE.value:
-            driver = g["driver_qty"].to_numpy(dtype=float)
             # The driver is the weight in every driver-weighted average
             # (Mean, MovingAverage, WeightedMovingAverage). Periods excluded
             # from fitting must carry no weight: their target was filled in
             # by interpolation, so letting the real driver vote for a
             # synthetic value would bias the average.
-            usable = reliable.copy()
-            if "is_applicable" in g.columns:
-                usable &= g["is_applicable"].to_numpy(dtype=bool)
-            driver = np.where(usable, driver, np.nan)
+            driver = np.where(usable, g["driver_qty"].to_numpy(dtype=float),
+                              np.nan)
         prior_value, prior_level, prior_siblings, prior_cat = _prior_for(
             row.item_code, row.mode, items_idx, pools)
+        matrix, diagnosis = series_context(
+            context_frame, row, g["period"].astype(str).tolist(),
+            target, usable, cfg)
         contexts.append(SeriesContext(
             series_id=row.series_id,
             mode=row.mode,
@@ -174,6 +233,8 @@ def build_contexts(prep: PreparedData, analyzed: pd.DataFrame,
             override_model=model_overrides.get(row.series_id),
             trailing_zeros=_trailing_zeros(target),
             median_interval=_median_interval(target),
+            context=matrix,
+            diagnosis=diagnosis,
         ))
     return contexts
 
@@ -224,7 +285,8 @@ def _process_series(ctx: SeriesContext, meta: dict, cfg: EngineConfig,
             if r.name == sel.winner_name and r.window == sel.winner_window:
                 continue
             cand = {"model_name": r.name, "window": r.window,
-                    "mase": r.mase, "status": r.status}
+                    "mase": r.mase, "status": r.status,
+                    "fail_reason": r.fail_reason}
             cand["reason"] = explain.rejection_reason(
                 cand, {"mase": sel.mase}, meta)
             rejected.append(cand)
@@ -335,11 +397,40 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
                                  input_hash=input_hash, name=run_name,
                                  scope_note=cfg.scope.note())
 
+        context_frame = None
+        if cfg.context.enabled:
+            from core.context import features as ctx_features
+
+            context_frame = ctx_features.derive(
+                prep.driver_agg, cfg, calendar=getattr(raw, "context_calendar",
+                                                       None))
+            if context_frame.has_variance:
+                emit(f"Operating context: {len(context_frame.regime_counts)} "
+                     "distinct condition(s) seen in the driver history"
+                     + (f", plus {len(context_frame.calendar_features)} "
+                        "planner-supplied factor(s)"
+                        if context_frame.calendar_features else ""))
+            else:
+                emit("Operating context: " + (context_frame.note
+                                              or "nothing to learn from"))
+
         model_overrides = {
             r.series_id: r.model_name
             for r in repo.get_model_overrides().itertuples()}
         contexts = build_contexts(prep, analyzed, raw.items,
-                                  raw.standard_rates, model_overrides, cfg)
+                                  raw.standard_rates, model_overrides, cfg,
+                                  context_frame=context_frame)
+        # the diagnosis belongs to every series, not only the scoped ones —
+        # it is a property of the data and the card must always answer
+        diagnoses = pd.DataFrame(
+            [{"series_id": c.series_id, **c.diagnosis.to_row()}
+             for c in contexts if c.diagnosis is not None])
+        n_material = int(diagnoses["material"].sum()) if not diagnoses.empty \
+            else 0
+        if n_material:
+            emit(f"Operating context materially changes {n_material} of "
+                 f"{len(contexts)} series — context-aware models will compete "
+                 "for those")
         # Scope restricts what gets FORECAST, never what gets analyzed: the
         # category priors above were pooled from every sibling series.
         if not cfg.scope.covers_all():
@@ -426,7 +517,8 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
                     item_code=item or None, line=line or None,
                     output_type=output or None))
 
-        _persist(repo, run_id, cfg, raw, prep, analyzed, ok, warnings)
+        _persist(repo, run_id, cfg, raw, prep, analyzed, ok, warnings,
+                 diagnoses)
         duration = time.perf_counter() - started
         repo.finish_run(run_id, "complete", n_series=len(contexts),
                         duration_s=round(duration, 2))
@@ -455,7 +547,8 @@ def _discard_partial(repo: Repository, run_id: str | None) -> None:
 
 
 def _persist(repo: Repository, run_id: str, cfg: EngineConfig, raw, prep,
-             analyzed: pd.DataFrame, ok: list[dict], warnings) -> None:
+             analyzed: pd.DataFrame, ok: list[dict], warnings,
+             diagnoses: pd.DataFrame | None = None) -> None:
     import json
 
     driver_store = prep.driver_agg.copy()
@@ -478,6 +571,8 @@ def _persist(repo: Repository, run_id: str, cfg: EngineConfig, raw, prep,
     series_df["stationary"] = series_df["stationary"].map(
         {True: 1, False: 0}).astype("Int64")
     repo.replace_series(series_df, prep.observations)
+    repo.replace_series_context(
+        diagnoses if diagnoses is not None else pd.DataFrame())
 
     if ok:
         val = pd.concat([r["validation"] for r in ok], ignore_index=True)

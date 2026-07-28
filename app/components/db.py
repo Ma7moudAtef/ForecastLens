@@ -86,6 +86,13 @@ def load_accuracy(stamp: float) -> pd.DataFrame:
     return repo().get_accuracy()
 
 
+@st.cache_data(show_spinner=False)
+def load_series_context(stamp: float) -> pd.DataFrame:
+    """The operating-context diagnosis, present for every series whether or
+    not a context-aware model was used for it."""
+    return repo().get_series_context()
+
+
 def stamp() -> float:
     return _stamp()
 

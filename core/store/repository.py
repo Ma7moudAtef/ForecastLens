@@ -184,6 +184,22 @@ class Repository:
             observations.to_sql("observation", self.conn, if_exists="append",
                                 index=False)
 
+    def replace_series_context(self, diagnoses: pd.DataFrame) -> None:
+        """The context diagnosis describes the DATA, not a run, so it is
+        replaced wholesale like the series table it belongs to."""
+        with self.conn:
+            self.conn.execute("DELETE FROM series_context")
+            if not diagnoses.empty:
+                diagnoses.to_sql("series_context", self.conn,
+                                 if_exists="append", index=False)
+
+    def get_series_context(self, series_id: str | None = None) -> pd.DataFrame:
+        if series_id:
+            return pd.read_sql_query(
+                "SELECT * FROM series_context WHERE series_id=?", self.conn,
+                params=(series_id,))
+        return pd.read_sql_query("SELECT * FROM series_context", self.conn)
+
     def write_warnings(self, run_id: str | None, warnings: pd.DataFrame) -> None:
         if warnings.empty:
             return

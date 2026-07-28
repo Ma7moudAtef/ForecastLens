@@ -17,6 +17,7 @@ TREND_FAMILY = {"Drift", "Holt", "DampedHolt"}
 SEASONAL_FAMILY = {"SeasonalNaive", "HoltWinters"}
 LEVEL_FAMILY = {"Mean", "MovingAverage", "WeightedMovingAverage", "SES"}
 SMOOTHING_FAMILY = {"SES", "Holt", "DampedHolt", "HoltWinters", "ETS", "Theta"}
+CONTEXT_FAMILY = {"FixedPlusVariable", "RegimeConditional", "ContextRegression"}
 
 
 def _windows(n: int) -> str:
@@ -86,6 +87,12 @@ def rejection_reason(candidate: dict, winner: dict, meta: dict) -> str:
     status = candidate.get("status")
     name = candidate.get("model_name")
     if status == "failed":
+        # a context model refuses to fit in plain words ("the driver barely
+        # varies…"); pass that straight through rather than burying it
+        detail = str(candidate.get("fail_reason") or "")
+        _, _, message = detail.partition(": ")
+        if name in CONTEXT_FAMILY and message:
+            return f"{name} could not be used here — {message}."
         return (f"{name} failed to fit this series and was disqualified "
                 "(the run continued without it).")
     if status == "skipped":
@@ -111,6 +118,9 @@ def rejection_reason(candidate: dict, winner: dict, meta: dict) -> str:
         hint = " — it could not track the series' trend"
     elif name == "Naive":
         hint = " — carrying the last value forward validated worse"
+    elif name in CONTEXT_FAMILY:
+        hint = (" — the operating conditions of a period explain less about "
+                "this material than its own recent history does")
 
     if pct <= 0.0:
         return (f"{name} validated as well as the winner but was not chosen "

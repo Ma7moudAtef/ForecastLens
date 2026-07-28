@@ -14,7 +14,7 @@ from core import identity
 from core.paths import output_dir
 from core.store.repository import Repository
 
-SHEETS = ("forecasts", "selections", "series", "warnings")
+SHEETS = ("forecasts", "selections", "series", "context", "warnings")
 
 
 def build_frames(db_path: str | Path, run_id: str | None = None,
@@ -31,6 +31,7 @@ def build_frames(db_path: str | Path, run_id: str | None = None,
         forecasts = repo.get_forecasts(run_id)
         selections = repo.get_selections(run_id)
         warnings = repo.get_warnings(run_id)
+        context = repo.get_series_context()
 
     lookup = identity.description_lookup(items)
     scoped = series if series_ids is None else \
@@ -50,6 +51,13 @@ def build_frames(db_path: str | Path, run_id: str | None = None,
         out.insert(1, "description",
                    out["item_code"].map(lambda c: lookup.get(str(c), "")))
         frames["series"] = out.drop(columns=["series_id"])
+    if "context" in sheets and not context.empty:
+        # the operating-context finding for every exported series, including
+        # the ones where the answer was "it makes no difference here"
+        frames["context"] = identity.add_identity(
+            context[context["series_id"].isin(keep)]
+            .drop(columns=["regime_counts_json"], errors="ignore"),
+            series, items)
     if "warnings" in sheets:
         frames["warnings"] = identity.expand_series_id(warnings, lookup)
     return frames

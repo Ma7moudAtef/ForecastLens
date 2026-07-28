@@ -95,7 +95,8 @@ def _check_assets() -> CheckResult:
 REQUIRED_IMPORTS = {
     "pandas": "reading and shaping your data",
     "numpy": "the numeric engine",
-    "scipy": "statistics and prediction intervals",
+    "scipy.stats": "statistics and prediction intervals",
+    "scipy.optimize": "splitting consumption into fixed and variable parts",
     "statsmodels.tsa.holtwinters": "the smoothing forecast models",
     "statsmodels.tsa.arima.model": "the ARIMA model",
     "statsmodels.tsa.seasonal": "seasonality analysis",

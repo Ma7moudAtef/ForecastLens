@@ -51,3 +51,23 @@ def test_series_metadata_is_identical(source_run, exe_run):
     assert source.equals(frozen), (
         "the packaged build classified series differently:\n"
         f"{source.compare(frozen) if source.shape == frozen.shape else 'shape mismatch'}")
+
+
+def test_context_findings_are_identical(source_run, exe_run):
+    """Same conditions derived, same test result, same verdict. A frozen
+    build whose scipy took a different path would show up here before it
+    showed up as a different forecast."""
+    source = A.assert_context_diagnosed(source_run["db"])
+    frozen = A.assert_context_diagnosed(exe_run["db"])
+
+    columns = ["series_id", "tested", "n_regimes", "n_observations",
+               "material", "verdict", "regime_counts_json"]
+    assert source[columns].equals(frozen[columns]), (
+        "the packaged build reached different conclusions about operating "
+        "context:\n"
+        f"{source[columns].compare(frozen[columns])}")
+
+    for column in ("p_value", "effect_size", "spread_pct"):
+        a = source[column].round(A.FORECAST_DECIMALS)
+        b = frozen[column].round(A.FORECAST_DECIMALS)
+        assert a.equals(b), f"{column} differs between source and exe"

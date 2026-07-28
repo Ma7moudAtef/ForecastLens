@@ -41,6 +41,13 @@ SHEET_HELP = {
     "consumption_figs": "Engineered standard consumption rates per item, "
                         "line and output — used as a forecast anchor and as "
                         "an actual-vs-standard benchmark.",
+    "context_calendar": "Optional. Things you know in advance that the "
+                        "driver table cannot express: promotions, campaigns, "
+                        "shutdowns, recipe changes. One row per factor per "
+                        "period; leave unit and stream blank for something "
+                        "plant-wide. Fill in future periods too — a factor "
+                        "the engine cannot read for the periods it is "
+                        "forecasting is history, not a forecasting input.",
 }
 
 # --- source -------------------------------------------------------------------
@@ -86,7 +93,8 @@ elif choice == WORKING_OPT:
     active = str(working)
 elif choice == UPLOAD_OPT:
     uploaded = st.file_uploader(
-        "Excel workbook (sheets: bom, consumption, prod, consumption_figs)",
+        "Excel workbook (sheets: bom, consumption, prod, consumption_figs, "
+        "and optionally context_calendar)",
         type=[e.lstrip(".") for e in app_cfg.allowed_upload_extensions],
         key="data_upload",
         help="Only .xlsx is accepted. The file is checked against the "
@@ -182,7 +190,8 @@ with cache_note[1]:
         st.rerun()
 
 tabs = st.tabs(["📊 Summary", "⚠️ Validation", "📋 bom", "📈 consumption",
-                "🏭 prod", "📐 consumption_figs", "🏷️ Item modes"])
+                "🏭 prod", "📐 consumption_figs", "🗓️ context_calendar",
+                "🏷️ Item modes"])
 
 # --- summary ------------------------------------------------------------------
 with tabs[0]:
@@ -356,11 +365,11 @@ def _sheet_tab(sheet: str, container) -> None:
                         st.rerun()
 
 
-for sheet, tab in zip(paths.SHEET_ORDER, tabs[2:6]):
+for sheet, tab in zip(paths.SHEET_ORDER, tabs[2:7]):
     _sheet_tab(sheet, tab)
 
 # --- item modes ---------------------------------------------------------------
-with tabs[6]:
+with tabs[7]:
     ui.section("Declare an item's mode",
                "Tell the engine that a material is driver-dependent "
                "(Relative) or independent (Absolute), regardless of what the "

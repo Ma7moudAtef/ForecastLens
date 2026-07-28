@@ -189,10 +189,25 @@ CREATE TABLE IF NOT EXISTS accuracy_history (
     PRIMARY KEY (series_id, period, run_id)
 );
 
--- Reserved for v2 (promotion/event regressors). Schema only, no logic.
-CREATE TABLE IF NOT EXISTS event_calendar (
-    event_id   TEXT PRIMARY KEY,
-    period     TEXT NOT NULL,
-    name       TEXT NOT NULL,
-    scope_json TEXT
+-- Does the operating context move this series? Written for EVERY series on
+-- every run, whether or not a context-aware model was used, so the
+-- intelligence card can always answer the question.
+CREATE TABLE IF NOT EXISTS series_context (
+    series_id      TEXT PRIMARY KEY,
+    tested         INTEGER NOT NULL DEFAULT 0,
+    n_regimes      INTEGER,
+    n_observations INTEGER,
+    p_value        REAL,
+    effect_size    REAL,               -- eta-squared
+    spread_pct     REAL,               -- (highest - lowest) / overall mean
+    material       INTEGER NOT NULL DEFAULT 0,
+    verdict        TEXT,               -- plain language, planner-readable
+    regime_counts_json TEXT,
+    skip_reason    TEXT
 );
+
+-- The placeholder `event_calendar` table that used to sit here is gone:
+-- promotion and event regressors are real now. They arrive through the
+-- workbook's optional `context_calendar` sheet, become ordinary context
+-- features, and their effect is recorded in series_context above. An older
+-- database may still carry the empty table; nothing reads it.

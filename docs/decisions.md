@@ -146,3 +146,84 @@ line *was* running is a genuine zero and still counts.
 `tests/fixtures/sample_public.xlsx`; a pre-commit hook and a CI job
 (`scripts/check_spreadsheets.py`) reject anything else. The private dataset is
 validated locally only, never in CI, never committed.
+
+## D11 — Context-aware forecasting: one generic capability, never an industry rule
+
+Consumption often depends on the operating conditions of a period and not
+only on the series' own history: how many units ran, which of them shared the
+plant, how hard they were pushed, whether a promotion or campaign was on. The
+engine models that as **one industry-neutral capability**. There is no steel
+rule, no FMCG rule, no pharma rule — the same code reads co-running production
+lines, co-running store formats and overlapping promotions, because from the
+engine's point of view they are the same shape of information.
+
+**Vocabulary** (used everywhere in `core/context/`): `unit` (the thing that
+runs), `stream` (what it produces), `driver` (how much), `context` (the
+conditions of a period), `regime` (a named combination of conditions),
+`co_activity` (what else ran at the same time). The existing `line` /
+`output_type` columns map onto `unit` / `stream` at the boundary of the module;
+they were not renamed globally, because that would touch the schema, every
+view, the exports and the parity fixtures for no behavioural gain.
+
+**Features are derived, not configured.** `core/context/features.py` builds
+one row per (period, unit, stream) with `active_set`, `n_active`, `is_solo`,
+`co_active_with`, `own_share`, `system_driver`, `utilization`, `mix_entropy`
+and a stable `regime_label`. A planner may add anything the driver table
+cannot express through an optional `context_calendar` sheet
+(`period, unit, stream, factor_name, factor_value`); supplied factors become
+ordinary features, and discrete ones join the regime label — a promotion that
+is running is part of the operating condition, not something beside it.
+
+**The diagnostic runs for every series, always.** Even where no context model
+could ever be fitted, the engine groups the target by regime, tests the
+difference (Kruskal-Wallis — non-parametric, honest on small samples),
+computes an effect size and the plain percentage spread, and stores the result
+in `series_context`. The intelligence card reports it whether or not a context
+model was used. "We looked and it does not matter here" is an answer.
+
+**Five guards, and they are the point:**
+
+- **G1 future availability** — every regressor is read from the driver plan,
+  which is knowable in advance. `utilization` is scaled by a high-water mark
+  computed from *actuals only*, so adding a plan never rewrites the past. If
+  the plan does not cover the whole horizon, the models are withheld and the
+  card says why.
+- **G2 minimum support** — a regime with fewer than `min_regime_obs` (4)
+  observations is pooled into an `other` bucket, never fitted on its own and
+  never silently deleted.
+- **G3 no special treatment** — models 20–22 go through the same rolling-origin
+  folds, the same MASE ranking and the same simplicity tie-break as everything
+  else. Their static parameter counts are deliberately higher than a moving
+  average's, so a near-tie goes to the simpler model.
+- **G4 materiality** — significance alone is worthless: on a long history a 2%
+  difference is statistically certain. A context model may only compete when
+  `p < alpha` **and** the spread between the highest and lowest regime is at
+  least `materiality` (10%) of the series' own mean.
+- **G5 degrade silently** — a single-unit, single-stream dataset produces
+  constant features. The layer detects that, switches itself off, and changes
+  no number. No errors, no warnings, no wasted computation.
+
+**What it is not.** It is not a rule that "two lines running means more
+consumption" — that is a hypothesis the data has to support per material. It
+is not a way to add regressors that must themselves be forecast. It is not a
+reason to relax cross-validation. Nothing here changes the atomic grain, the
+aggregation rules, or MASE-based selection.
+
+Measured on the sample workbook: 600 of 820 series were testable, 58 showed a
+material effect, and 12 were actually won by a context model. That ratio is
+the design working — the layer is offered often, believed rarely.
+
+### What the golden regression moved, and why
+
+Adding the layer changed **13 of 820 selections**, all of them for the better
+in back-testing (mean validation error 0.87 → 0.52 on the changed series;
+none got worse). Twelve went to a context model and one to an ensemble that
+now contains one.
+
+The **absolute-mode demand total rose 35%** (1,169 → 1,579). That is not a
+scaling bug: eight of the thirteen are Absolute materials whose consumption
+tracks total plant activity, and the production plan for the horizon averages
+20.6 units of activity against 12.2 in the recorded history. Their forecasts
+went up because the plan says the plant will be busier. Relative-mode demand
+barely moved (174.8 → 173.8), which is what you would expect — a rate does
+not care how much runs.

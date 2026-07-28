@@ -81,7 +81,8 @@ def _score_folds(result: CVResult, y: np.ndarray, valid: np.ndarray) -> None:
 
 def evaluate_candidate(cand: Candidate, y: np.ndarray,
                        driver: np.ndarray | None, cfg: EngineConfig,
-                       valid: np.ndarray | None = None) -> CVResult:
+                       valid: np.ndarray | None = None,
+                       context=None) -> CVResult:
     """Rolling-origin evaluation of one candidate on one series.
 
     ``valid`` marks periods that may be SCORED against (reliable periods);
@@ -89,6 +90,13 @@ def evaluate_candidate(cand: Candidate, y: np.ndarray,
     'skipped' when fewer than min_cv_origins folds are possible — the caller
     must then use the gate's default rather than fabricate a competition on
     too few folds.
+
+    ``context`` is the series' operating conditions. Models that declare
+    ``uses_context`` are handed the fold's own slice of it — the training
+    rows and the rows of the periods they are about to predict. Those future
+    rows come from the driver plan, which is known in advance, so this is not
+    leakage; the fold boundary below is asserted exactly as for every other
+    model.
     """
     horizon = cfg.cv.horizon
     n = len(y)
@@ -113,6 +121,8 @@ def evaluate_candidate(cand: Candidate, y: np.ndarray,
         assert train_idx.max() < test_idx.min(), "CV leakage: train overlaps test"
         try:
             model = cand.build()
+            if context is not None and getattr(model, "uses_context", False):
+                model.set_context(context.for_fit(train_idx, test_idx))
             model.fit(y[train_idx],
                       driver=None if driver is None else driver[train_idx])
             preds = np.asarray(model.predict(len(test_idx)), dtype=float)

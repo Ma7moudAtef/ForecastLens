@@ -96,6 +96,34 @@ class DriverConfig(BaseModel):
     floor_fraction: float = Field(0.20, ge=0.0, le=1.0)
 
 
+class ContextConfig(BaseModel):
+    """Context-aware forecasting.
+
+    Consumption may depend on the operating conditions of a period — which
+    units ran, how loaded they were, whether a promotion was on — and not
+    only on the series' own history. The layer derives those conditions from
+    the driver table automatically and degrades silently when a dataset has
+    no variation in them (a single unit and stream, or no driver at all).
+    """
+
+    enabled: bool = True
+    #: a regime fitted on its own needs at least this many observations;
+    #: rarer regimes are pooled into an "other" bucket (G2)
+    min_regime_obs: int = Field(4, ge=2)
+    #: an effect must be this large relative to the series mean before a
+    #: context model may compete — statistical significance is not enough (G4)
+    materiality: float = Field(0.10, ge=0.0)
+    #: significance threshold for the diagnostic test (G4)
+    alpha: float = Field(0.05, gt=0.0, lt=1.0)
+    #: at most one regressor per this many observations (G4/overfitting)
+    observations_per_regressor: int = Field(8, ge=2)
+    #: reject a regressor whose variance inflation exceeds this
+    max_vif: float = Field(5.0, gt=1.0)
+    #: driver must vary at least this much for a fixed/variable split to be
+    #: identifiable at all
+    min_driver_cv: float = Field(0.10, ge=0.0)
+
+
 class ModelConfig(BaseModel):
     """Model library toggles."""
 
@@ -166,6 +194,7 @@ class EngineConfig(BaseModel):
     gate: GateConfig = Field(default_factory=GateConfig)
     rate: RateConfig = Field(default_factory=RateConfig)
     driver: DriverConfig = Field(default_factory=DriverConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)
     models: ModelConfig = Field(default_factory=ModelConfig)
     cv: CVConfig = Field(default_factory=CVConfig)
     selection: SelectionConfig = Field(default_factory=SelectionConfig)

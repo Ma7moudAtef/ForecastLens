@@ -31,6 +31,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--derive-rates", action="store_true",
                         help="for items with no cons_rate but with driver "
                              "data, derive rate = consumption / driver")
+    parser.add_argument("--no-context", action="store_true",
+                        help="do not let the context-aware models compete. "
+                             "Items are still tested and the finding is "
+                             "still recorded either way.")
+    parser.add_argument("--context-materiality", type=float,
+                        help="how much operating conditions must change an "
+                             "item's consumption before a context-aware "
+                             "model may compete for it (default 0.10)")
     args = parser.parse_args(argv)
 
     configure()
@@ -48,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
                                 if c.strip()]
     if args.derive_rates:
         cfg.rate.derive_missing = True
+    if args.no_context:
+        cfg.context.enabled = False
+    if args.context_materiality is not None:
+        cfg.context.materiality = args.context_materiality
 
     def progress(stage: str, fraction: float) -> None:
         log.info("[%3.0f%%] %s", fraction * 100, stage)

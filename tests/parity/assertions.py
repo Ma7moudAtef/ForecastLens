@@ -74,6 +74,24 @@ def assert_database_round_trip(db_path: Path) -> None:
         assert not repo.get_observations().empty
 
 
+def assert_context_diagnosed(db_path: Path) -> pd.DataFrame:
+    """Every series carries an operating-context finding, and the materiality
+    gate is not letting everything through. This is a parity assertion
+    because a frozen build that silently skipped the layer would still
+    produce forecasts — just different ones."""
+    with Repository(db_path) as repo:
+        context = repo.get_series_context()
+    assert len(context) == EXPECTED_SERIES, \
+        f"expected {EXPECTED_SERIES} context rows, got {len(context)}"
+    assert context["verdict"].str.len().gt(0).all(), \
+        "a series has no plain-language context verdict"
+    material = int(context["material"].sum())
+    assert 0 < material < EXPECTED_SERIES, (
+        "the materiality gate is not discriminating: "
+        f"{material} of {EXPECTED_SERIES} series called material")
+    return context.sort_values("series_id").reset_index(drop=True)
+
+
 def assert_export_written(path: Path) -> None:
     assert path.exists(), f"no export written at {path}"
     assert path.stat().st_size > 0

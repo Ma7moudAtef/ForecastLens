@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from app.components import charts, db, items as item_utils, ui
+from core.context.features import humanize_regime
 from core.forecast.aggregate import aggregate_forecasts, aggregate_observations
 
 st.title("🔍 Explorer")
@@ -33,6 +34,7 @@ all_series = db.load_series(db.stamp())
 selections = db.load_selections(db.stamp(), run_id)
 forecasts = db.load_forecasts(db.stamp(), run_id)
 observations = db.load_observations(db.stamp())
+context_diag = db.load_series_context(db.stamp())
 bom_items = db.load_items(db.stamp())
 desc_lookup = item_utils.description_lookup(bom_items)
 
@@ -215,6 +217,36 @@ if len(matched) == 1:
             st.warning(f"Behaviour appears to have shifted around "
                        f"{row['structural_break_period']} — worth checking "
                        "whether something changed in the process.")
+
+        # Operating context is reported for EVERY item, including the ones
+        # where it turned out to explain nothing. "We looked and it does not
+        # matter here" is an answer a planner needs as much as the opposite.
+        ctx_row = context_diag[context_diag["series_id"] == sid]
+        if len(ctx_row):
+            c = ctx_row.iloc[0]
+            st.markdown("**Operating context**")
+            (st.success if c["material"] else st.info)(c["verdict"])
+            counts = json.loads(c["regime_counts_json"] or "{}")
+            if counts:
+                with st.expander("Conditions this item has actually run under"):
+                    st.dataframe(
+                        pd.DataFrame(
+                            [{"Operating condition": humanize_regime(k),
+                              "Periods observed": v}
+                             for k, v in sorted(counts.items(),
+                                                key=lambda kv: -kv[1])],
+                        ), hide_index=True, width="stretch")
+                    if pd.notna(c["spread_pct"]):
+                        st.caption(
+                            f"Highest condition runs {c['spread_pct']:.0%} "
+                            "above the lowest, measured against this item's "
+                            "own average.")
+            ui.help_icon(
+                "Consumption can depend on what else the plant is doing — "
+                "how many units run, which of them share the load, whether a "
+                "promotion is on. The engine tests every item for that and "
+                "reports what it found, whether or not it ended up "
+                "forecasting with it.")
 
     with col_reason:
         ui.section("Why this model",

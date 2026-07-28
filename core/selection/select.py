@@ -19,6 +19,7 @@ from core.models.base import BaseModel
 from core.models.baselines import Naive
 from core.models.ensemble import Ensemble
 from core.models.intermittent import SBA, TSB, Croston, ZeroForecast
+from core.models import registry
 from core.models.registry import Candidate
 from core.prep.mode import Mode
 from core.selection import gate as gate_mod
@@ -45,6 +46,11 @@ class SeriesContext:
     override_model: str | None = None   # sticky planner override
     trailing_zeros: int = 0
     median_interval: float | None = None
+    #: operating conditions over history and horizon (core.context.matrix),
+    #: None when context does not apply to this series
+    context: object | None = None
+    #: the always-on context diagnosis (core.context.diagnose)
+    diagnosis: object | None = None
 
 
 @dataclass
@@ -64,7 +70,35 @@ class SelectionResult:
 
 
 def _fit_full(model: BaseModel, ctx: SeriesContext) -> BaseModel:
+    if ctx.context is not None and getattr(model, "uses_context", False):
+        # the real forecast: history is everything, the future comes from the
+        # driver plan rather than from a held-out slice
+        model.set_context(ctx.context.for_fit(np.arange(len(ctx.y))))
     return model.fit(ctx.y, driver=ctx.driver)
+
+
+def context_candidates(ctx: SeriesContext, cfg: EngineConfig) -> list[Candidate]:
+    """Models 20–22, offered only when they have earned the right to compete.
+
+    Four things must hold, and every one of them is about the data rather
+    than about the models: the layer is switched on, this series actually has
+    operating context, the driver plan covers the whole horizon (G1), and the
+    diagnostic layer found an effect that is both real and material (G4).
+    Everything after this point treats them as ordinary candidates (G3).
+
+    The diagnosis is computed on the full history, so it decides the
+    CANDIDATE SET the way the history gate already does with pattern class
+    and usable length. It never touches a fold's scores: every candidate that
+    gets in is still validated on the same rolling origins as the rest.
+    """
+    if not cfg.context.enabled or ctx.context is None:
+        return []
+    if not getattr(ctx.context, "known_future", False):
+        return []
+    if not getattr(ctx.diagnosis, "material", False):
+        return []
+    target_is_rate = ctx.mode == Mode.RELATIVE.value
+    return registry.build_context_candidates(cfg, target_is_rate)
 
 
 def _cold_start(ctx: SeriesContext) -> tuple[BaseModel, str]:
@@ -154,11 +188,15 @@ def select_for_series(ctx: SeriesContext, cfg: EngineConfig) -> SelectionResult:
         anchor = Candidate(
             lambda sr=ctx.std_rate: StandardRateAnchor(sr), "StandardRateAnchor")
         candidates[(anchor.name, None)] = anchor
+    for cand in registry.filter_disabled(context_candidates(ctx, cfg), cfg):
+        if cand.build().min_history <= ctx.n_reliable:
+            candidates[(cand.name, cand.window)] = cand
 
     results: list[CVResult] = []
     for cand in candidates.values():
         results.append(evaluate_candidate(cand, ctx.y, ctx.driver, cfg,
-                                          valid=ctx.valid))
+                                          valid=ctx.valid,
+                                          context=ctx.context))
     ok = [r for r in results if r.status == "ok" and r.mase is not None
           and np.isfinite(r.mase)]
 
@@ -253,6 +291,15 @@ def _instantiate_by_name(name: str, cfg: EngineConfig,
         "MovingAverage": MovingAverage(w),
         "WeightedMovingAverage": WeightedMovingAverage(w),
     }
+    if name in registry.CONTEXT_MODEL_NAMES:
+        # a planner may lock a context model even where the materiality gate
+        # would not have offered it — but not where there is no context to
+        # read at all
+        if ctx.context is None:
+            return None
+        built = registry.build_context_candidates(
+            cfg, ctx.mode == Mode.RELATIVE.value)
+        return next((c.build() for c in built if c.name == name), None)
     if name == "StandardRateAnchor" and ctx.std_rate is not None:
         return StandardRateAnchor(ctx.std_rate)
     if name == "CategoryPrior" and ctx.prior_value is not None:

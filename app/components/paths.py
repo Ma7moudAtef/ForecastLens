@@ -23,7 +23,15 @@ from core.paths import (  # noqa: F401  (re-exported for the UI)
 #: kept for callers that referenced the old single-name constant
 DATA_DIR_ENV = DATA_DIR_ENVS[-1]
 
-SHEET_ORDER = ["bom", "consumption", "prod", "consumption_figs"]
+SHEET_ORDER = ["bom", "consumption", "prod", "consumption_figs",
+               "context_calendar"]
+
+#: Columns an optional sheet is given when the workbook does not carry it, so
+#: the editor offers something to type into instead of a blank grid.
+EMPTY_SHEET_COLUMNS = {
+    "context_calendar": ["period", "factor_name", "factor_value", "unit",
+                         "stream"],
+}
 
 
 def repo_root() -> Path:
@@ -49,12 +57,12 @@ def read_workbook_sheets(path: Path) -> dict[str, pd.DataFrame]:
     with pd.ExcelFile(path, engine="openpyxl") as xl:
         for sheet in SHEET_ORDER:
             frames[sheet] = xl.parse(sheet) if sheet in xl.sheet_names \
-                else pd.DataFrame()
+                else pd.DataFrame(columns=EMPTY_SHEET_COLUMNS.get(sheet, []))
     return frames
 
 
 def write_workbook(frames: dict[str, pd.DataFrame], path: Path) -> None:
-    """Write the four input sheets to an xlsx at `path` (working copy)."""
+    """Write the input sheets to an xlsx at `path` (working copy)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         for sheet in SHEET_ORDER:

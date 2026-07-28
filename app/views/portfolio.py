@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from app.components import badges, db, items as item_utils, ui
-from core.export import build_frames
+from core.export import SHEETS as EXPORT_SHEETS, build_frames
 
 st.title("📋 Portfolio & Export")
 
@@ -142,11 +142,11 @@ with e1:
 with e2:
     what = st.multiselect(
         "Sheets to include",
-        ["forecasts", "selections", "series", "warnings"],
-        default=["forecasts", "selections", "series", "warnings"],
+        list(EXPORT_SHEETS), default=list(EXPORT_SHEETS),
         help="forecasts = the numbers per future period. selections = which "
              "model won each item and why. series = each item's behaviour "
-             "profile. warnings = the validation report.")
+             "profile. context = whether operating conditions change each "
+             "item's consumption. warnings = the validation report.")
 
 scoped_ids = set(view["series_id"]) if export_scope.startswith("Only") \
     else set(table["series_id"])

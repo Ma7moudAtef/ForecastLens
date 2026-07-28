@@ -70,8 +70,20 @@ STANDARD_RATE_MAP = {
     "production_line": "line",
 }
 
+#: Optional operating-context factors the planner knows in advance and the
+#: driver table cannot express: a promotion window, a campaign, a shutdown, a
+#: recipe change. One row per factor per period. `unit` and `stream` are
+#: optional — leave them blank for a factor that applies plant-wide.
+CONTEXT_SHEET = "context_calendar"
+CONTEXT_MAP = {
+    "period": "period",
+    "factor_name": "factor_name",
+    "factor_value": "factor_value",
+}
+CONTEXT_OPTIONAL_MAP = {"unit": "unit", "stream": "stream"}
+
 REQUIRED_SHEETS = (BOM_SHEET, CONSUMPTION_SHEET)
-OPTIONAL_SHEETS = (DRIVER_SHEET, STANDARD_RATE_SHEET)
+OPTIONAL_SHEETS = (DRIVER_SHEET, STANDARD_RATE_SHEET, CONTEXT_SHEET)
 
 _NUMERIC = {
     "qty_base", "qty_ton", "cost", "rate", "unit_price", "unit_wt",
@@ -79,7 +91,8 @@ _NUMERIC = {
 }
 _DATED = {"date"}
 #: dimension columns: keep as strings, strip whitespace, empty -> <NA>
-_DIMENSION = {"item_code", "line", "output_type", "driver_type", "declared_mode"}
+_DIMENSION = {"item_code", "line", "output_type", "driver_type", "declared_mode",
+              "unit", "stream", "factor_name"}
 
 
 @dataclass
@@ -97,6 +110,10 @@ class RawTables:
     standard_rates: pd.DataFrame
     source_name: str = ""
     coercion_failures: dict[str, int] = field(default_factory=dict)
+    #: optional planner-supplied context factors; empty frame when absent
+    context_calendar: pd.DataFrame = field(
+        default_factory=lambda: pd.DataFrame(
+            columns=["period", "factor_name", "factor_value", "unit", "stream"]))
 
 
 def _map_columns(df: pd.DataFrame, mapping: dict[str, str], sheet: str,
@@ -158,6 +175,16 @@ def build_raw_tables(sheets: dict[str, pd.DataFrame], source_name: str = "") -> 
     else:
         standard_rates = pd.DataFrame(columns=list(STANDARD_RATE_MAP.values()))
 
+    if CONTEXT_SHEET in sheets and not sheets[CONTEXT_SHEET].empty:
+        context_calendar = _coerce(
+            _map_columns(sheets[CONTEXT_SHEET], CONTEXT_MAP, CONTEXT_SHEET,
+                         CONTEXT_OPTIONAL_MAP),
+            CONTEXT_SHEET, failures)
+    else:
+        context_calendar = pd.DataFrame(
+            columns=[*CONTEXT_MAP.values(), *CONTEXT_OPTIONAL_MAP.values()])
+
     return RawTables(items=items, consumption=consumption, driver=driver,
                      standard_rates=standard_rates, source_name=source_name,
-                     coercion_failures={k: v for k, v in failures.items() if v})
+                     coercion_failures={k: v for k, v in failures.items() if v},
+                     context_calendar=context_calendar)

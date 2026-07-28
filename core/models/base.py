@@ -29,12 +29,22 @@ class BaseModel(ABC):
     supports_driver_weighting: bool = False
     #: trend-capable models widen intervals with the horizon
     interval_grows: bool = False
+    #: the model reads operating context; the caller must hand it a window
+    #: covering both the fitting periods and the periods to be predicted
+    uses_context: bool = False
 
     def __init__(self) -> None:
         self.y_: np.ndarray | None = None
         self.resid_std_: float = 0.0
 
     # --- lifecycle -----------------------------------------------------------
+    def set_context(self, window) -> None:
+        """Supply the operating conditions of the fitting periods AND of the
+        periods about to be forecast. A no-op for every model that does not
+        read context — the caller stays generic and no model gets special
+        handling (guard G3)."""
+        return None
+
     def fit(self, y, driver=None, period_index=None) -> "BaseModel":
         y = np.asarray(y, dtype=float)
         if len(y) < self.min_history:

@@ -53,6 +53,20 @@ DATA_DICTIONARY: list[tuple[str, str, str]] = [
     ("consumption_figs", "std_cons_rate_uom", "Unit of the standard rate."),
     ("consumption_figs", "output_type", "Output the standard applies to."),
     ("consumption_figs", "production_line", "Line the standard applies to."),
+    ("context_calendar", "period", "OPTIONAL SHEET. The period the factor "
+     "applies to — '2024-03' or any date inside the month. Include FUTURE "
+     "periods: a factor the engine cannot read for the periods it is "
+     "forecasting cannot be used to forecast them."),
+    ("context_calendar", "factor_name", "Name of the operating factor — "
+     "promotion, campaign, shutdown, recipe… It appears under this name in "
+     "the explanations a planner reads."),
+    ("context_calendar", "factor_value", "1/0 for on/off, any number for a "
+     "measurement, or text (each distinct text value becomes its own on/off "
+     "indicator)."),
+    ("context_calendar", "unit", "OPTIONAL. Limit the factor to one "
+     "production line. Leave blank for plant-wide."),
+    ("context_calendar", "stream", "OPTIONAL. Limit the factor to one output "
+     "type. Leave blank for all outputs."),
 ]
 
 

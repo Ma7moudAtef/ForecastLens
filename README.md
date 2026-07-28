@@ -10,6 +10,12 @@ plain language a supply planner can act on. It works for steel, FMCG,
 pharmaceuticals, trading companies and online retailers with data changes
 only — no code changes.
 
+It also asks whether a material's consumption depends on the *operating
+conditions* of a period — how many units ran, which of them shared the plant,
+whether a promotion was on — and forecasts on that where the data supports it.
+Every item is tested; only the ones with a real, material effect get a
+context-aware model, and the finding is reported either way.
+
 Priorities, in order: **correctness → explainability → portability → speed →
 UI polish.**
 
@@ -17,6 +23,7 @@ UI polish.**
 
 ```
 core/        pure engine — pandas/numpy/statsmodels, zero streamlit imports (CI-enforced)
+core/context/  operating-context features, always-on diagnostics, guards G1–G5
 app/         Streamlit UI — reads completed results from SQLite, never computes
 cli/         headless batch runner
 tests/       unit / traps / integration / fixtures

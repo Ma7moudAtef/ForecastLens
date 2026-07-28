@@ -458,3 +458,60 @@ def test_data_source_choice_is_sticky_across_reruns():
     at.run()   # a further rerun, as any widget interaction would cause
     assert at.radio[0].value == other, "choice reverted to the default"
     assert at.session_state["data_source_choice"] == other
+
+
+def test_intelligence_card_reports_operating_context_for_every_item():
+    """The amendment's requirement: the context finding is shown whether or
+    not a context-aware model was used — including "it makes no difference
+    here", which is an answer in its own right."""
+    from app.components import db as app_db
+
+    stamp = app_db.stamp()
+    series = app_db.load_series(stamp)
+    items = app_db.load_items(stamp)
+    context = app_db.load_series_context(stamp).set_index("series_id")
+    assert not context.empty, "the pipeline wrote no context diagnoses"
+
+    # deliberately pick an item the context layer found NOTHING for
+    quiet = context[context["material"] == 0].index
+    row = series[series["series_id"].isin(quiet)
+                 & (series["n_reliable"] >= 6)].iloc[0]
+    desc = items.set_index("item_code")["description"].get(
+        row["item_code"], "")
+
+    at = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                           default_timeout=180).run()
+    at.multiselect[0].set_value([f"{desc} — {row['item_code']}"])
+    at.multiselect[1].set_value([row["line"]])
+    at.multiselect[2].set_value([row["output_type"]])
+    at.run()
+    assert not at.exception
+
+    rendered = _rendered_text(at)
+    assert "Operating context" in rendered
+    verdict = context.loc[row["series_id"], "verdict"]
+    banners = " ".join(el.value for el in at.info) + " " + \
+        " ".join(el.value for el in at.success)
+    assert verdict[:60] in banners, "the card did not show the finding"
+
+
+def test_overview_explains_the_context_models():
+    at = AppTest.from_file(str(APP / "views" / "overview.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    labels = " ".join(e.label for e in at.expander)
+    assert "Operating context" in labels
+    body = " ".join(e.value for e in at.markdown)
+    for phrase in ("Fixed+Variable", "Regime-Conditional",
+                   "Context Regression"):
+        assert phrase in body
+
+
+def test_configure_run_offers_the_context_controls():
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    boxes = {c.label for c in at.checkbox}
+    assert "Use operating context" in boxes
+    sliders = {s.label for s in at.slider}
+    assert "Minimum context effect to act on" in sliders

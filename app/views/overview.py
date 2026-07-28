@@ -172,6 +172,34 @@ and they carry the items whose history is too short to model.
   brand-new materials a defensible starting forecast.
 """)
 
+with st.expander("🏭 Operating context — Fixed+Variable, Regime, Context Regression"):
+    st.markdown("""
+Some materials do not depend only on their own past. They depend on what the
+plant was *doing*: how many units ran, which of them shared the load, whether
+a promotion or campaign was on. These three read those conditions from the
+production plan — which the planner supplies in advance, so nothing has to be
+forecast in order to forecast.
+
+- **Fixed+Variable** splits consumption into a standing part that does not
+  change with output and a part that scales with it. This is why the rate per
+  tonne rises when a line runs slowly: the standing part is spread over less
+  output.
+- **Regime-Conditional** keeps a separate level for each operating pattern —
+  one unit alone, two together, a promotion week — and uses the level of
+  whichever pattern the plan says each future period will be in.
+- **Context Regression** fits a deliberately small regression on the
+  conditions of the period, at most one factor per eight periods of history,
+  rejecting any factor that repeats what another already says.
+
+**They have to earn it.** Every item is tested for a context effect, but the
+models are only allowed to compete when the effect is both statistically real
+and large enough to matter (10% by default) — and then they still have to win
+the same back-test as everything else. On a dataset with one line and one
+output type the whole layer switches itself off and changes nothing. The
+Explorer's intelligence card reports the test result for every item, including
+the ones where the answer was "it does not matter here".
+""")
+
 with st.expander("🤝 Ensemble — the average of the best few"):
     st.markdown("""
 When several models validate almost equally well (within ~10% of each
@@ -188,6 +216,7 @@ with st.expander("🧭 How the engine decides which models compete"):
 | Sporadic/lumpy demand pattern | Routed to the intermittent family (SBA default, TSB when the series has gone quiet). |
 | 6–23 usable periods | Non-seasonal candidates compete under rolling back-testing. |
 | 24+ usable periods | Full set including the seasonal models (and ARIMA if enabled). |
+| Operating conditions measurably change the item | The three context-aware models join the competition on equal terms. |
 
 Candidates are ranked on scale-free validation error (MASE); near-ties go to
 the more stable, then the **simpler** model. Every choice — and every
