@@ -61,6 +61,44 @@ def test_explorer_offers_items_by_description():
     assert options and all("—" in o for o in options[:5]), options[:5]
 
 
+def test_explorer_has_one_selection_control_with_nothing_preselected():
+    """The picker is the only thing that decides what you see: no separate
+    'split by' or 'group to chart' controls, and nothing pre-chosen."""
+    at = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+
+    labels = [m.label for m in at.multiselect]
+    assert labels == ["Items (by description)", "Production lines",
+                      "Output types"], labels
+    assert all(m.value == [] for m in at.multiselect), \
+        "a picker came pre-populated"
+
+    selectboxes = [s.label for s in at.selectbox]
+    assert "Group to chart" not in selectboxes, selectboxes
+    source = (APP / "views" / "explorer.py").read_text(encoding="utf-8")
+    assert "split_dims" not in source
+    assert "Split results by" not in source
+
+
+def test_explorer_default_view_combines_everything():
+    """With nothing selected the whole catalogue is combined into one line,
+    which is what 'leave it empty to combine across it' means."""
+    at = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    captions = " ".join(c.value for c in at.caption)
+    assert "shown combined" in captions
+    tables = [el.value for el in at.dataframe]
+    assert tables, "combined view rendered no table"
+    combined = tables[-1]
+    # one row per future period, not one per series (series end at different
+    # times, so the periods span more than a single horizon)
+    assert combined["period"].is_unique
+    assert len(combined) < 200          # vs hundreds of underlying series
+    assert combined["n_series"].max() > 50, "rows are not actually combined"
+
+
 def test_portfolio_shows_badge_tiles_and_identity_columns():
     at = AppTest.from_file(str(APP / "views" / "portfolio.py"),
                            default_timeout=180).run()
@@ -73,9 +111,7 @@ def test_portfolio_shows_badge_tiles_and_identity_columns():
 @pytest.mark.parametrize("view", [p for p in VIEWS
                                   if p.stem in ("portfolio", "explorer")],
                          ids=lambda p: p.stem)
-def test_rendered_tables_show_identity_columns_not_series_id(view):
-    """Requirement: the user sees item code, description, line and output as
-    separate columns — never the internal combined identifier."""
+def test_rendered_tables_never_leak_the_series_id(view):
     at = AppTest.from_file(str(view), default_timeout=180).run()
     assert not at.exception
     rendered = [el.value for el in at.dataframe]
@@ -83,9 +119,18 @@ def test_rendered_tables_show_identity_columns_not_series_id(view):
     for frame in rendered:
         cols = set(getattr(frame, "columns", []))
         assert "series_id" not in cols, f"{view.stem} leaked series_id: {cols}"
+
+
+def test_portfolio_shows_the_four_identity_columns():
+    """Per-series output identifies an item by code, description, line and
+    output type. (The Explorer's combined view has no per-series rows — its
+    identity is shown as metrics on the single-series detail instead.)"""
+    at = AppTest.from_file(str(APP / "views" / "portfolio.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    rendered = [el.value for el in at.dataframe]
     assert any({"item_code", "description", "line", "output_type"} <=
-               set(getattr(f, "columns", [])) for f in rendered), \
-        f"{view.stem} shows no identity columns"
+               set(getattr(f, "columns", [])) for f in rendered)
 
 
 def test_relative_item_charts_cons_rate_by_default():

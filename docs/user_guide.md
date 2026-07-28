@@ -115,13 +115,15 @@ while working.
      warnings — your data, model overrides and mode declarations are kept.
      Run numbers are never reused or shifted; clearing everything restarts
      numbering at 1.
-4. **Explorer** — pick items **by description** (the code follows after the
-   dash, and searching by code still works). Omit a dimension to combine
-   across it; combined rates are always driver-weighted. A single item shows
-   its code, description, line and output type, then: the chart with 80%/95%
-   bands and driver overlay, the intelligence card, the full model
-   competition, why the winner won and why each loser lost, and the override
-   control.
+4. **Explorer** — one control decides everything: pick items **by
+   description** (the code follows after the dash; searching by code still
+   works), plus optionally lines and output types. Nothing is preselected.
+   Whatever you leave empty is combined across — no line selected means all
+   lines added together. Narrow it to a single item, line and output and the
+   view switches to that series in full: its code, description, line and
+   output type, the chart with 80%/95% bands and driver overlay, the
+   intelligence card, the model competition, why the winner won and why each
+   loser lost, and the override control.
    - For a **Relative** item the chart shows the **consumption rate
      (`cons_rate`)** by default — that is what the engine actually models.
      Switch to *Reconstructed demand* to see rate × planned production.

@@ -48,8 +48,10 @@ if len(series) < len(all_series):
 # --- pickers ------------------------------------------------------------------
 ui.section("Choose what to look at",
            "Pick items by description (the code is shown after the dash). "
-           "Leave a dimension empty to combine across it: no line selected "
-           "means all lines are added together, not listed separately.")
+           "Anything you leave empty is combined across: no line selected "
+           "means every line added together, not listed separately. Narrow "
+           "it down to a single item, line and output to open that series' "
+           "full detail.")
 c1, c2, c3 = st.columns(3)
 with c1:
     item_labels = item_utils.build_labels(
@@ -69,24 +71,21 @@ with c3:
         help="Which outputs (products) to include. Empty = all outputs "
              "combined together.")
 
-split_dims = st.multiselect(
-    "Split results by", ["item_code", "line", "output_type"],
-    default=["item_code", "line", "output_type"],
-    help="Dimensions listed here are kept separate; anything not listed is "
-         "summed across. Demand is always added up — consumption rates are "
-         "never averaged, they are recomputed as total demand ÷ total "
-         "driver.")
-
 filters = {"item_code": picked_items, "line": lines, "output_type": outputs}
 mask = pd.Series(True, index=series.index)
 for dim, vals in filters.items():
     if vals:
         mask &= series[dim].isin(vals)
 matched = series[mask]
-st.caption(f"{len(matched)} forecast series match the current selection.")
+if len(matched) == 1:
+    st.caption("1 forecast series selected — showing its full detail.")
+else:
+    st.caption(f"{len(matched)} forecast series selected — shown combined. "
+               "Narrow the selection to a single item, line and output to "
+               "see one series in full.")
 
 # --- single-series detail -----------------------------------------------------
-if len(matched) == 1 and set(split_dims) == {"item_code", "line", "output_type"}:
+if len(matched) == 1:
     row = matched.iloc[0]
     sid = row["series_id"]
     description = desc_lookup.get(str(row["item_code"]), "")
@@ -281,12 +280,12 @@ if len(matched) == 1 and set(split_dims) == {"item_code", "line", "output_type"}
 # --- aggregated view ----------------------------------------------------------
 else:
     ui.section("Combined view",
-               "Everything matching your selection, combined across whichever "
-               "dimensions you left out. Relative items are shown as a "
-               "consumption rate, each period weighted by the production it "
-               "was consumed against — never a plain average of rates. "
-               "Absolute items are shown as consumption quantity. A rate and "
-               "a quantity cannot share an axis, so pick one at a time.")
+               "Everything you selected, added together. Relative items are "
+               "shown as a consumption rate, each period weighted by the "
+               "production it was consumed against — never a plain average "
+               "of rates. Absolute items are shown as consumption quantity. "
+               "A rate and a quantity cannot share an axis, so pick one at a "
+               "time.")
 
     # Rates and quantities are different units and must never be mixed into
     # one number. Split the selection by mode and chart one mode at a time.
@@ -312,40 +311,16 @@ else:
     mode_series = series[series["mode"] == view_mode]
     is_relative_view = view_mode == "relative"
 
-    agg_fc = aggregate_forecasts(forecasts, mode_series,
-                                 group_dims=split_dims, filters=filters)
-    agg_obs = aggregate_observations(observations, mode_series,
-                                     group_dims=split_dims, filters=filters)
-    if agg_fc.empty and agg_obs.empty:
+    # Everything selected is combined into one series — what the picker
+    # leaves empty is what gets combined across. There is no second grouping
+    # control: the picker alone decides what you are looking at.
+    g_fc = aggregate_forecasts(forecasts, mode_series, group_dims=[],
+                               filters=filters)
+    g_obs = aggregate_observations(observations, mode_series, group_dims=[],
+                                   filters=filters)
+    if g_fc.empty and g_obs.empty:
         st.info("Nothing matches the current selection.")
         st.stop()
-
-    group_cols = list(split_dims)
-    if group_cols:
-        base = agg_fc if not agg_fc.empty else agg_obs
-        combos = base[group_cols].drop_duplicates().copy()
-        if "item_code" in combos.columns:
-            combos["description"] = combos["item_code"].map(
-                lambda c: desc_lookup.get(str(c), ""))
-        label_cols = (["description", "item_code"]
-                      if "description" in combos.columns else []) + \
-                     [c for c in group_cols if c != "item_code"]
-        labels = combos[label_cols].astype(str).agg(" · ".join, axis=1)
-        # key is scoped to the mode: the option list changes with it, and a
-        # stale selection from the other mode must not leak across
-        choice = st.selectbox(
-            "Group to chart", labels, key=f"combined_group_{view_mode}",
-            help="Which combination to display. The table below always "
-                 "covers everything selected.")
-        chosen = combos[labels == choice].iloc[0]
-        m_fc = pd.Series(True, index=agg_fc.index)
-        m_obs = pd.Series(True, index=agg_obs.index)
-        for c in group_cols:
-            m_fc &= agg_fc[c] == chosen[c]
-            m_obs &= agg_obs[c] == chosen[c]
-        g_fc, g_obs = agg_fc[m_fc], agg_obs[m_obs]
-    else:
-        g_fc, g_obs = agg_fc, agg_obs
 
     if is_relative_view:
         # Σ(rate·driver) ÷ Σdriver — the driver-weighted mean of the recorded
@@ -392,21 +367,15 @@ else:
             "individual errors move together.")
     ui.chart(fig, chart_help)
 
-    show = agg_fc.copy()
-    if "item_code" in show.columns:
-        show.insert(1, "description",
-                    show["item_code"].map(lambda c: desc_lookup.get(str(c), "")))
     value_cols = (["rate", "demand", "driver_plan"] if is_relative_view
                   else ["demand", "driver_plan", "rate"])
-    cols = ["period"] + \
-           [c for c in ["item_code", "description", "line", "output_type"]
-            if c in show.columns] + \
-           [c for c in value_cols + ["n_series", "confidence"]
-            if c in show.columns]
-    ui.table(show[cols],
-             "demand = forecast units. driver_plan = planned production for "
-             "the period, counted once per line rather than once per item. "
-             "rate = the driver-weighted average of the member rates, in "
-             "your data's own cons_rate units — never a plain average. "
-             "n_series = how many item/line/output combinations are in the "
-             "row.", hide_index=True)
+    cols = ["period"] + [c for c in value_cols + ["n_series", "confidence"]
+                         if c in g_fc.columns]
+    ui.table(g_fc[cols],
+             "One row per future period for everything you selected, "
+             "combined. demand = forecast units. driver_plan = planned "
+             "production for the period, counted once per line rather than "
+             "once per item. rate = the driver-weighted average of the "
+             "member rates, in your data's own cons_rate units — never a "
+             "plain average. n_series = how many item/line/output "
+             "combinations are behind the row.", hide_index=True)
