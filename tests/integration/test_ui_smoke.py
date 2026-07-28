@@ -146,13 +146,18 @@ def test_combined_view_charts_rate_for_relative_and_quantity_for_absolute():
     assert "relative" in options and "consumption rate" in options
     assert "absolute" in options and "consumption quantity" in options
 
-    # Relative: the chart is the driver-weighted consumption rate, and the
-    # results table leads with `rate`, not `demand`.
+    # Which chart was drawn is identified by a phrase unique to that branch
+    # (AppTest cannot read a plotly figure's own contents) plus the results
+    # table's column order, which is wording-independent.
+    RATE_MARKER = "summed bounds do not divide into a meaningful rate"
+    QUANTITY_MARKER = "consumption quantity for every series"
+
+    # Relative: the driver-weighted consumption rate, table led by `rate`.
     rel = _pick_mode(at, "relative")
     assert not rel.exception
     rel_text = _rendered_text(rel)
-    assert "total demand divided by total driver" in rel_text
-    assert "consumption quantity for every series" not in rel_text
+    assert RATE_MARKER in rel_text
+    assert QUANTITY_MARKER not in rel_text
     rel_cols = [list(d.value.columns) for d in rel.dataframe]
     assert rel_cols, "no results table"
     value_cols = [c for c in rel_cols[0] if c in ("rate", "demand")]
@@ -164,8 +169,8 @@ def test_combined_view_charts_rate_for_relative_and_quantity_for_absolute():
     absolute = _pick_mode(at2, "absolute")
     assert not absolute.exception
     abs_text = _rendered_text(absolute)
-    assert "consumption quantity for every series" in abs_text
-    assert "total demand divided by total driver" not in abs_text
+    assert QUANTITY_MARKER in abs_text
+    assert RATE_MARKER not in abs_text
     abs_cols = [list(d.value.columns) for d in absolute.dataframe]
     value_cols = [c for c in abs_cols[0] if c in ("rate", "demand")]
     assert value_cols[0] == "demand", abs_cols[0]
