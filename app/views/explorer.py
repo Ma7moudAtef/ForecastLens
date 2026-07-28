@@ -274,13 +274,40 @@ if len(matched) == 1 and set(split_dims) == {"item_code", "line", "output_type"}
 # --- aggregated view ----------------------------------------------------------
 else:
     ui.section("Combined view",
-               "Forecasts for everything matching your selection, added "
-               "together across whichever dimensions you left out. Demand is "
-               "summed; any combined rate is recomputed as total demand ÷ "
-               "total driver.")
-    agg_fc = aggregate_forecasts(forecasts, series, group_dims=split_dims,
-                                 filters=filters)
-    agg_obs = aggregate_observations(observations, series,
+               "Everything matching your selection, combined across whichever "
+               "dimensions you left out. Relative items are shown as a "
+               "consumption rate (total demand ÷ total driver — never an "
+               "average of rates); Absolute items are shown as consumption "
+               "quantity. The two cannot share an axis, so pick one at a "
+               "time.")
+
+    # Rates and quantities are different units and must never be mixed into
+    # one number. Split the selection by mode and chart one mode at a time.
+    matched_modes = sorted(matched["mode"].unique())
+    if len(matched_modes) > 1:
+        counts = matched["mode"].value_counts()
+        mode_labels = {
+            "relative": f"Relative — consumption rate ({counts.get('relative', 0)} series)",
+            "absolute": f"Absolute — consumption quantity ({counts.get('absolute', 0)} series)",
+        }
+        chosen_label = st.radio(
+            "Show", [mode_labels[m] for m in matched_modes], horizontal=True,
+            key="combined_mode",
+            help="Your selection mixes driver-dependent (Relative) and "
+                 "independent (Absolute) items. A rate and a quantity cannot "
+                 "be added together or plotted on one axis, so choose which "
+                 "to view.")
+        view_mode = next(m for m in matched_modes
+                         if mode_labels[m] == chosen_label)
+    else:
+        view_mode = matched_modes[0]
+
+    mode_series = series[series["mode"] == view_mode]
+    is_relative_view = view_mode == "relative"
+
+    agg_fc = aggregate_forecasts(forecasts, mode_series,
+                                 group_dims=split_dims, filters=filters)
+    agg_obs = aggregate_observations(observations, mode_series,
                                      group_dims=split_dims, filters=filters)
     if agg_fc.empty and agg_obs.empty:
         st.info("Nothing matches the current selection.")
@@ -297,8 +324,10 @@ else:
                       if "description" in combos.columns else []) + \
                      [c for c in group_cols if c != "item_code"]
         labels = combos[label_cols].astype(str).agg(" · ".join, axis=1)
+        # key is scoped to the mode: the option list changes with it, and a
+        # stale selection from the other mode must not leak across
         choice = st.selectbox(
-            "Group to chart", labels,
+            "Group to chart", labels, key=f"combined_group_{view_mode}",
             help="Which combination to display. The table below always "
                  "covers everything selected.")
         chosen = combos[labels == choice].iloc[0]
@@ -311,30 +340,51 @@ else:
     else:
         g_fc, g_obs = agg_fc, agg_obs
 
-    fig = charts.series_chart(
-        g_obs.rename(columns={"qty_base": "value"}).sort_values("period"),
-        g_fc.rename(columns={"demand": "value",
-                             "demand_lower_80": "lower_80",
-                             "demand_upper_80": "upper_80",
-                             "demand_lower_95": "lower_95",
-                             "demand_upper_95": "upper_95"})
-            .sort_values("period"),
-        "value", "value", title="Combined demand")
-    ui.chart(fig,
-             "History and forecast demand for every series in this group, "
-             "added together. Interval bounds are summed too, which is a "
-             "conservative approximation — it assumes the individual errors "
-             "move together.")
+    if is_relative_view:
+        # Σdemand ÷ Σdriver — the driver-weighted combined rate, computed by
+        # the aggregation. Rates are never summed or plainly averaged.
+        fig = charts.series_chart(
+            g_obs.rename(columns={"rate": "value"}).sort_values("period"),
+            g_fc.rename(columns={"rate": "value"}).sort_values("period"),
+            "value", "value",
+            driver=(g_obs.rename(columns={"driver_qty": "driver_qty"})
+                    [["period", "driver_qty"]].dropna()
+                    if "driver_qty" in g_obs.columns else None),
+            title="Combined consumption rate (cons_rate)")
+        chart_help = (
+            "The consumption rate for this group: total demand divided by "
+            "total driver in each period — a driver-weighted average, never "
+            "a plain average of rates. Grey dotted line is the driver "
+            "itself. Prediction bands are not shown here because summed "
+            "bounds do not divide into a meaningful rate interval.")
+    else:
+        fig = charts.series_chart(
+            g_obs.rename(columns={"qty_base": "value"}).sort_values("period"),
+            g_fc.rename(columns={"demand": "value",
+                                 "demand_lower_80": "lower_80",
+                                 "demand_upper_80": "upper_80",
+                                 "demand_lower_95": "lower_95",
+                                 "demand_upper_95": "upper_95"})
+                .sort_values("period"),
+            "value", "value", title="Combined consumption quantity")
+        chart_help = (
+            "History and forecast consumption quantity for every series in "
+            "this group, added together. Interval bounds are summed too, "
+            "which is a conservative approximation — it assumes the "
+            "individual errors move together.")
+    ui.chart(fig, chart_help)
 
     show = agg_fc.copy()
     if "item_code" in show.columns:
         show.insert(1, "description",
                     show["item_code"].map(lambda c: desc_lookup.get(str(c), "")))
+    value_cols = (["rate", "demand", "driver_plan"] if is_relative_view
+                  else ["demand", "driver_plan", "rate"])
     cols = ["period"] + \
            [c for c in ["item_code", "description", "line", "output_type"]
             if c in show.columns] + \
-           [c for c in ["demand", "driver_plan", "rate", "n_series",
-                        "confidence"] if c in show.columns]
+           [c for c in value_cols + ["n_series", "confidence"]
+            if c in show.columns]
     ui.table(show[cols],
              "demand = forecast units. driver_plan = planned production for "
              "the period. rate = total demand ÷ total driver (a "

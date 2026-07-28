@@ -70,6 +70,11 @@ while working.
    - Runs appear as **Run 1, Run 2, …** with their date and what they
      covered. Every run is kept, so you can switch back at any time; items a
      run did not cover keep the results of the run that last included them.
+   - While a run is going you see a **live log** of every stage (rows
+     loaded, series built, demand patterns found, chunks forecast with an
+     ETA, models chosen) and an **⛔ Abort run** button. Aborting stops after
+     the chunk in flight and saves nothing — earlier runs are untouched. The
+     log stays available afterwards and can be downloaded.
    - The **Previous runs** section lists them all and lets you **delete a
      single run** or **clear the whole history** (tick the confirmation box
      first). Deleting removes that run's forecasts, model choices and
@@ -87,6 +92,11 @@ while working.
      (`cons_rate`)** by default — that is what the engine actually models.
      Switch to *Reconstructed demand* to see rate × planned production.
    - For an **Absolute** item the chart shows consumption quantity.
+   - In the **combined view** the same rule holds: Relative selections are
+     charted as a consumption rate (total demand ÷ total driver — never an
+     average of rates), Absolute selections as consumption quantity. If your
+     selection mixes both, a **Show** switch appears: a rate and a quantity
+     are different units and cannot share an axis.
 5. **Portfolio & Export** — the triage screen. Badges tell you where to
    spend your attention: data-quality issues first, then structural changes,
    declining accuracy, manual reviews. Everything else is "automatic OK".

@@ -11,12 +11,23 @@ boundary and the domain word never appears again in `core/` logic, the SQLite
 schema, or any internal API. A trading company or online store has no driver
 at all — the engine must never assume one exists.
 
-## D2 — ARIMA: included, gated, off by default
+## D2 — ARIMA: implemented, but not a planner-facing option
 
-ARIMA is implemented, but only offered to series with ≥ 24 periods and only
-when explicitly enabled (`models.enable_arima = true`). Automatic order
-selection on ~30 points is unstable and rarely beats ETS or Theta while being
-much harder to explain.
+**Updated after the first UI review.** ARIMA remains implemented and tested
+in the model library, but it is no longer exposed in the Run tab and is not
+part of any competition by default:
+
+- there is no ARIMA toggle in the UI, and it is absent from the
+  "Disable models" list (offering a switch for a model that never competes is
+  noise);
+- `models.enable_arima` stays in `EngineConfig`, defaulting to `False`, so a
+  headless caller (`cli.run --config …`) can still turn it on;
+- the gate keeps its ≥ 24-period requirement for when it is enabled.
+
+Rationale, unchanged from the original spec: automatic order selection on ~30
+points is unstable, it rarely beats ETS or Theta at this history length, and
+it cannot justify itself to a planner in one sentence — which conflicts with
+the explainability priority.
 
 ## D3 — Inventory policy: out of scope for v1
 

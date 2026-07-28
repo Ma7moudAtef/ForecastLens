@@ -38,10 +38,30 @@ from core.analyze.statistics import analyze_all
 log = get_logger("pipeline")
 
 ProgressCb = Callable[[str, float], None]
+LogCb = Callable[[str], None]
+CancelCb = Callable[[], bool]
+
+#: series handled per parallel chunk — the granularity at which progress is
+#: reported and a cancellation request is honoured
+CHUNK_SIZE = 40
+
+
+class RunCancelled(Exception):
+    """Raised when the caller asked for the run to stop. Partial results are
+    discarded so a half-finished forecast can never be mistaken for a real
+    one."""
 
 
 def _noop_progress(stage: str, fraction: float) -> None:
     pass
+
+
+def _noop_log(message: str) -> None:
+    pass
+
+
+def _never_cancel() -> bool:
+    return False
 
 
 # --- context assembly ---------------------------------------------------------
@@ -231,32 +251,74 @@ def _process_series(ctx: SeriesContext, meta: dict, cfg: EngineConfig,
 def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
                  db_path: str | Path | None = None,
                  progress_cb: ProgressCb | None = None,
-                 run_name: str | None = None) -> str:
-    """Execute a full batch run and persist everything. Returns run_id."""
+                 run_name: str | None = None,
+                 log_cb: LogCb | None = None,
+                 cancel_cb: CancelCb | None = None) -> str:
+    """Execute a full batch run and persist everything. Returns run_id.
+
+    ``log_cb`` receives verbose, human-readable progress lines. ``cancel_cb``
+    is polled between stages and between series chunks; when it returns True
+    the run stops, its partial results are removed, and RunCancelled is
+    raised.
+    """
     cfg = cfg or EngineConfig()
     progress = progress_cb or _noop_progress
+    emit = log_cb or _noop_log
+    cancelled = cancel_cb or _never_cancel
     db_path = db_path or AppConfig().db_path
     started = time.perf_counter()
 
+    def checkpoint(run_id: str | None = None) -> None:
+        if cancelled():
+            raise RunCancelled(run_id or "")
+
     with Repository(db_path) as repo:
+        emit(f"Reading workbook: {Path(input_path).name}")
         progress("loading workbook", 0.02)
         raw = ExcelSource(input_path).load()
         input_hash = hashlib.sha256(Path(input_path).read_bytes()).hexdigest()[:16]
+        emit(f"Loaded {len(raw.consumption):,} consumption rows, "
+             f"{raw.consumption['item_code'].nunique()} items, "
+             f"{len(raw.driver):,} driver rows")
+        checkpoint()
 
         progress("validating", 0.06)
+        emit("Validating the data…")
         warnings = rules.run_all(raw, cfg)
         if rules.has_fatal(warnings):
             fatal = [w.message for w in warnings if w.severity == rules.Severity.FATAL]
             raise RuntimeError("fatal validation errors: " + "; ".join(fatal))
+        by_severity = {}
+        for w in warnings:
+            by_severity[w.severity.value] = by_severity.get(w.severity.value, 0) + 1
+        emit("Validation finished: " + (", ".join(
+            f"{n} {sev}" for sev, n in sorted(by_severity.items()))
+            or "no issues"))
+        checkpoint()
 
         progress("building series", 0.12)
+        emit("Building the forecast series (gap filling, calendar "
+             "normalization, driver join)…")
         mode_overrides = {
             r.item_code: r.mode for r in repo.get_mode_overrides().itertuples()}
         prep = build_series(raw, cfg, mode_overrides=mode_overrides)
         warnings = warnings + prep.warnings
+        n_relative = int((prep.series["mode"] == "relative").sum())
+        emit(f"Built {len(prep.series)} series — {n_relative} relative "
+             f"(rate-based), {len(prep.series) - n_relative} absolute "
+             f"(quantity-based)")
+        if mode_overrides:
+            emit(f"Applied {len(mode_overrides)} planner mode declaration(s)")
+        checkpoint()
 
         progress("analyzing behaviour", 0.20)
+        emit("Studying each series: trend, seasonality, volatility, demand "
+             "pattern…")
         analyzed = analyze_all(prep, cfg)
+        classes = analyzed["pattern_class"].value_counts().to_dict()
+        emit("Demand patterns: " + ", ".join(
+            f"{n} {name}" for name, n in sorted(classes.items())))
+        checkpoint()
 
         run_id = repo.create_run(cfg.model_dump_json(), source_name=raw.source_name,
                                  input_hash=input_hash, name=run_name,
@@ -280,6 +342,14 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
                     f"{sorted(wanted)}")
             log.info("scope: %d series across %d item(s)",
                      len(contexts), len(wanted))
+            emit(f"Scope: {len(contexts)} series across {len(wanted)} "
+                 "selected item(s) — the rest of the catalogue was analyzed "
+                 "but will not be forecast")
+        else:
+            emit(f"Scope: all {len(contexts)} series")
+        if model_overrides:
+            emit(f"Respecting {len(model_overrides)} locked model "
+                 "override(s)")
         meta_by_series = analyzed.set_index("series_id")[
             ["line", "output_type", "last_period", "forecastability",
              "data_quality", "n_reliable", "trend_strength",
@@ -288,15 +358,49 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
         plan = plan_lookup(prep.driver_agg)
 
         progress("selecting and forecasting", 0.25)
+        emit(f"Competing models on {len(contexts)} series "
+             f"(in chunks of {CHUNK_SIZE})…")
         # Frozen (PyInstaller) apps must not spawn loky worker processes —
         # each worker would re-launch the exe. Threads are safe there;
         # numpy/statsmodels release the GIL enough to still parallelize.
         backend = "threading" if getattr(sys, "frozen", False) else "loky"
-        results = Parallel(n_jobs=cfg.n_jobs, batch_size=16, backend=backend)(
-            delayed(_process_series)(ctx, meta_by_series[ctx.series_id], cfg, plan)
-            for ctx in contexts)
+        results: list[dict] = []
+        fit_started = time.perf_counter()
+        with Parallel(n_jobs=cfg.n_jobs, batch_size=8, backend=backend) as pool:
+            for start in range(0, len(contexts), CHUNK_SIZE):
+                # a cancel request is honoured between chunks — mid-chunk
+                # abort would leave worker processes orphaned
+                if cancelled():
+                    emit(f"Cancelled after {len(results)} of "
+                         f"{len(contexts)} series — discarding partial "
+                         "results")
+                    _discard_partial(repo, run_id)
+                    raise RunCancelled(run_id)
+                chunk = contexts[start:start + CHUNK_SIZE]
+                results.extend(pool(
+                    delayed(_process_series)(
+                        ctx, meta_by_series[ctx.series_id], cfg, plan)
+                    for ctx in chunk))
+                done = len(results)
+                elapsed = time.perf_counter() - fit_started
+                rate = done / elapsed if elapsed > 0 else 0
+                remaining = (len(contexts) - done) / rate if rate > 0 else 0
+                n_failed = sum(1 for r in results if r["status"] != "ok")
+                progress(f"forecasting {done}/{len(contexts)} series",
+                         0.25 + 0.65 * done / len(contexts))
+                emit(f"  {done}/{len(contexts)} series done "
+                     f"({rate:.1f}/s, ~{remaining:.0f}s left"
+                     + (f", {n_failed} failed)" if n_failed else ")"))
+
+        emit(f"Model competition finished in "
+             f"{time.perf_counter() - fit_started:.1f}s")
+        if cancelled():
+            emit("Cancelled before saving — discarding partial results")
+            _discard_partial(repo, run_id)
+            raise RunCancelled(run_id)
 
         progress("persisting results", 0.90)
+        emit("Saving forecasts, model choices and explanations…")
         ok = [r for r in results if r["status"] == "ok"]
         failed = [r for r in results if r["status"] != "ok"]
         for r in failed:
@@ -316,9 +420,27 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
         repo.finish_run(run_id, "complete", n_series=len(contexts),
                         duration_s=round(duration, 2))
         progress("done", 1.0)
+        winners = {}
+        for r in ok:
+            name = r["selection"]["model_name"]
+            winners[name] = winners.get(name, 0) + 1
+        top = sorted(winners.items(), key=lambda kv: -kv[1])[:5]
+        emit("Models chosen: " + ", ".join(f"{n}× {name}" for name, n in top)
+             + (" …" if len(winners) > 5 else ""))
+        if failed:
+            emit(f"{len(failed)} series could not be forecast — see the "
+                 "warnings on the Data page")
+        emit(f"Run finished in {duration:.1f}s: {len(ok)} series forecast")
         log.info("run %s complete: %d series (%d failed) in %.1fs",
                  run_id, len(contexts), len(failed), duration)
         return run_id
+
+
+def _discard_partial(repo: Repository, run_id: str | None) -> None:
+    """A cancelled run leaves nothing behind: a half-finished forecast set
+    must never be mistaken for a real one."""
+    if run_id:
+        repo.delete_run(run_id)
 
 
 def _persist(repo: Repository, run_id: str, cfg: EngineConfig, raw, prep,

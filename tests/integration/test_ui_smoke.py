@@ -115,6 +115,89 @@ def test_relative_item_charts_cons_rate_by_default():
     assert view_radio[0].value == view_radio[0].options[0]  # rate is default
 
 
+def _pick_mode(at, mode: str):
+    """Drive Explorer's combined view to one mode. AppTest.run() returns the
+    refreshed tree, so the result must be used — elements from the previous
+    tree are stale."""
+    show = [r for r in at.radio if r.label == "Show"]
+    if not show:
+        return at
+    option = next(o for o in show[0].options if o.lower().startswith(mode))
+    return show[0].set_value(option).run()
+
+
+def _rendered_text(at) -> str:
+    """All markdown on the page, including the hover explanations rendered
+    beside charts. (AppTest cannot read a plotly figure's own value, so the
+    chart's explanation text is what identifies which chart was drawn.)"""
+    return " ".join(m.value for m in at.markdown)
+
+
+def test_combined_view_charts_rate_for_relative_and_quantity_for_absolute():
+    """Requirement: the combined graph must not show demand for Relative
+    items — it shows their consumption rate; Absolute items show quantity."""
+    at = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                           default_timeout=300).run()
+    assert not at.exception
+
+    mode_radio = [r for r in at.radio if r.label == "Show"]
+    assert mode_radio, "no mode chooser on a mixed selection"
+    options = " ".join(mode_radio[0].options).lower()
+    assert "relative" in options and "consumption rate" in options
+    assert "absolute" in options and "consumption quantity" in options
+
+    # Relative: the chart is the driver-weighted consumption rate, and the
+    # results table leads with `rate`, not `demand`.
+    rel = _pick_mode(at, "relative")
+    assert not rel.exception
+    rel_text = _rendered_text(rel)
+    assert "total demand divided by total driver" in rel_text
+    assert "consumption quantity for every series" not in rel_text
+    rel_cols = [list(d.value.columns) for d in rel.dataframe]
+    assert rel_cols, "no results table"
+    value_cols = [c for c in rel_cols[0] if c in ("rate", "demand")]
+    assert value_cols[0] == "rate", rel_cols[0]
+
+    # Absolute: summed consumption quantity, table led by `demand`.
+    at2 = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                            default_timeout=300).run()
+    absolute = _pick_mode(at2, "absolute")
+    assert not absolute.exception
+    abs_text = _rendered_text(absolute)
+    assert "consumption quantity for every series" in abs_text
+    assert "total demand divided by total driver" not in abs_text
+    abs_cols = [list(d.value.columns) for d in absolute.dataframe]
+    value_cols = [c for c in abs_cols[0] if c in ("rate", "demand")]
+    assert value_cols[0] == "demand", abs_cols[0]
+
+
+def test_combined_relative_rate_is_driver_weighted_not_averaged():
+    """The number behind the rate chart must be Σdemand ÷ Σdriver."""
+    import numpy as np
+
+    from app.components import db as app_db
+    from core.forecast.aggregate import aggregate_forecasts
+
+    stamp = app_db.stamp()
+    run_id = app_db.repo().latest_complete_run_id()
+    series = app_db.load_series(stamp)
+    forecasts = app_db.load_forecasts(stamp, run_id)
+
+    relative = series[series["mode"] == "relative"]
+    agg = aggregate_forecasts(forecasts, relative, group_dims=[])
+    assert not agg.empty
+
+    row = agg[agg["driver_plan"] > 0].iloc[0]
+    assert row["rate"] == pytest.approx(row["demand"] / row["driver_plan"])
+
+    period_rows = forecasts[
+        forecasts["series_id"].isin(set(relative["series_id"])) &
+        (forecasts["period"] == row["period"])]
+    plain_mean = period_rows["target_value"].mean()
+    assert not np.isclose(row["rate"], plain_mean), \
+        "combined rate equals a plain average — rates must be driver-weighted"
+
+
 def test_portfolio_carries_the_merged_export_section():
     """Export lives on the Portfolio page now: the Excel workbook and the
     single-table CSV are both offered there."""
@@ -161,6 +244,72 @@ def test_data_page_preloads_default_workbook():
     # summary metrics render, meaning a workbook was loaded with no user input
     assert any(m.value == "820" for m in at.metric), \
         "default workbook was not preloaded"
+
+
+def test_overview_workflow_matches_the_real_tabs():
+    """Requirement: the workflow text must describe the tabs that actually
+    exist — no Accuracy, and Export merged into Portfolio."""
+    import re
+
+    nav_source = (APP / "main.py").read_text(encoding="utf-8")
+    nav_titles = re.findall(r'st\.Page\([^)]*?title="([^"]+)"', nav_source)
+    assert len(nav_titles) >= 4, nav_titles
+
+    at = AppTest.from_file(str(APP / "views" / "overview.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    workflow = next(m.value for m in at.markdown if "**Workflow**" in m.value)
+
+    # every tab except Overview itself is described, in navigation order
+    described = [t for t in nav_titles if t != "Overview"]
+    positions = [workflow.find(t) for t in described]
+    assert all(p >= 0 for p in positions), \
+        f"tabs missing from the workflow: " \
+        f"{[t for t, p in zip(described, positions) if p < 0]}"
+    assert positions == sorted(positions), "workflow order differs from tabs"
+
+    # and nothing that no longer exists is mentioned
+    assert "Accuracy" not in workflow
+    assert not re.search(r"\*\*.{0,4}Export\*\*", workflow), \
+        "Export is described as its own tab"
+
+
+def test_arima_is_not_a_planner_facing_option():
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=300).run()
+    assert not at.exception
+    for widget in list(at.checkbox) + list(at.multiselect) + list(at.radio):
+        assert "ARIMA" not in widget.label, widget.label
+        options = getattr(widget, "options", []) or []
+        assert not any("ARIMA" in str(o) for o in options), options
+    source = (APP / "views" / "configure_run.py").read_text(encoding="utf-8")
+    assert "enable_arima" not in source
+
+
+def test_run_tab_offers_a_log_view():
+    """The log expander only exists once a run has produced lines, so drive
+    the state directly rather than launching a real batch."""
+    from app.components import run_state
+
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=300)
+    at.run()
+    assert not at.exception
+    assert hasattr(run_state, "request_cancel")
+
+    # a finished run leaves its log available to read and download
+    run_state._state.update({"running": False, "run_id": "abc",
+                             "log": ["12:00:00  Reading workbook: x.xlsx",
+                                     "12:00:05  Run finished in 5s"],
+                             "started_at": 0.0, "finished_at": 5.0})
+    try:
+        at.run()
+        assert not at.exception
+        assert any("Run log" in e.label for e in at.expander)
+        assert any("Download log" in b.label for b in at.download_button)
+    finally:
+        run_state._state.update({"run_id": None, "log": [], "started_at": None,
+                                 "finished_at": None})
 
 
 def test_configure_run_offers_scope_and_delete_controls():

@@ -42,14 +42,16 @@ if not series.empty:
 st.markdown("""
 **Workflow**
 
-1. **🗂️ Data** — the default workbook is already loaded. Review validation,
-   edit tables in place, or bring your own file.
-2. **⚙️ Configure & Run** — set the horizon and model options, launch a run.
-3. **🔍 Explorer** — inspect any item (picked by description): chart,
-   intelligence card, model competition, plain-language reasoning, override.
-4. **📋 Portfolio** — triage: which items actually need attention.
-5. **🎯 Accuracy** — import newer actuals, track forecast error over time.
-6. **📤 Export** — Excel/CSV of forecasts, selections and warnings.
+1. **🗂️ Data** — the default workbook is already loaded. Review the
+   validation report, edit any sheet in place, or bring your own file.
+2. **⚙️ Configure & Run** — choose the scope (all materials, a single item,
+   or a list), set the horizon and model options, then run. You can follow
+   the live log and abort a run at any point.
+3. **🔍 Explorer** — inspect any item, picked by description: chart,
+   intelligence card, model competition, plain-language reasoning, and the
+   model override control.
+4. **📋 Portfolio & Export** — triage which items actually need attention,
+   then download the results as Excel or CSV.
 """)
 
 if runs.empty or (runs["status"] == "complete").sum() == 0:
@@ -126,16 +128,18 @@ is; the models *learn* how fast to forget from the data itself.
   automatically and keeps the best-fitting form.
 """)
 
-with st.expander("📐 Statistical — Theta, ARIMA (optional)"):
+with st.expander("📐 Statistical — Theta"):
     st.markdown("""
 - **Theta** ⭐ splits the series into a heavily-smoothed long-run line and an
   exaggerated short-run line, forecasts both and averages. Won the M3
   forecasting competition; extremely hard to beat on short monthly business
   series — exactly this data's shape.
-- **ARIMA** models the series through its own past values and errors. Off by
-  default: on short histories it is unstable and hard to explain, and rarely
-  beats ETS or Theta. Enable it on Configure & Run for series with ≥ 24
-  periods if you want it in the competition.
+
+*ARIMA is deliberately not part of the competition: on histories this short
+its automatic order selection is unstable, it rarely beats the smoothing
+models, and it cannot explain itself to a planner in one sentence. The
+implementation is kept in the engine for headless use, but it is not a
+front-of-house option.*
 """)
 
 with st.expander("🕳️ Intermittent demand — Croston, SBA, TSB"):

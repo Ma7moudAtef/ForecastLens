@@ -45,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
         log.info("[%3.0f%%] %s", fraction * 100, stage)
 
     run_id = run_forecast(args.input, cfg, db_path=args.db,
-                          progress_cb=progress, run_name=args.name)
+                          progress_cb=progress, run_name=args.name,
+                          log_cb=log.info)
     print(run_id)
     return 0
 

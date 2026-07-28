@@ -21,6 +21,13 @@ from core.models.registry import ALL_MODEL_NAMES
 
 st.title("⚙️ Configure & Run")
 
+#: Models a planner may switch off. The three fallbacks are excluded because
+#: something must always be able to produce a forecast. ARIMA is excluded
+#: because it is not part of the competition at all — see docs/decisions.md.
+NEVER_DISABLED = ("Naive", "StandardRateAnchor", "CategoryPrior")
+SELECTABLE_MODELS = [n for n in ALL_MODEL_NAMES
+                     if n not in NEVER_DISABLED and n != "ARIMA"]
+
 
 @st.cache_data(show_spinner="Reading the item list…")
 def read_catalogue(path: str) -> dict[str, str]:
@@ -116,10 +123,6 @@ with st.form("config"):
             help="Window lengths tried by the moving-average models — how "
                  "many recent periods count as 'still representative'.")
     with c3:
-        enable_arima = st.checkbox(
-            "Enable ARIMA (24+ periods only)", value=False,
-            help="Off by default: on short histories ARIMA is unstable, hard "
-                 "to explain, and rarely beats the smoothing models.")
         fast_mode = st.checkbox(
             "Fast mode", value=False,
             help="Skip the lookback-window sweep — fewer candidates, quicker "
@@ -129,9 +132,7 @@ with st.form("config"):
             help="How many CPU workers fit models at once. -1 uses all "
                  "cores but one.")
         disabled = st.multiselect(
-            "Disable models",
-            [n for n in ALL_MODEL_NAMES if n not in
-             ("Naive", "StandardRateAnchor", "CategoryPrior")],
+            "Disable models", SELECTABLE_MODELS,
             help="Remove specific models from every competition. The "
                  "fallback models cannot be disabled — something must always "
                  "be able to produce a forecast.")
@@ -155,8 +156,7 @@ if submitted:
             forecast={"horizon": int(horizon)},
             gate={"min_history_competition": int(min_hist),
                   "seasonal_min_history": int(seasonal_min)},
-            models={"enable_arima": enable_arima,
-                    "lookback_windows": sorted(windows) or [3],
+            models={"lookback_windows": sorted(windows) or [3],
                     "disabled_models": disabled},
             fast_mode=fast_mode,
             n_jobs=int(n_jobs),
@@ -167,16 +167,56 @@ if submitted:
             st.warning("A run is already in progress.")
 
 state = run_state.state()
+
+
+def _render_log(expanded: bool) -> None:
+    lines = state["log"]
+    if not lines:
+        return
+    with st.expander(f"📜 Run log ({len(lines)} lines)", expanded=expanded):
+        st.caption("Every stage the engine goes through, newest at the "
+                   "bottom. Useful for seeing where time is spent or why a "
+                   "run stopped.")
+        st.code("\n".join(lines), language=None)
+        st.download_button(
+            "⬇️ Download log", "\n".join(lines).encode(),
+            file_name="forecastlens_run_log.txt", mime="text/plain",
+            help="Save the full log to a text file.")
+
+
 if state["running"]:
     st.progress(state["fraction"],
-                text=f"{state['stage']} ({state['fraction']:.0%})")
+                text=f"{state['stage']} ({state['fraction']:.0%}) · "
+                     f"{run_state.elapsed():.0f}s elapsed")
+    cancel_col, _ = st.columns([1, 3])
+    with cancel_col:
+        if st.button("⛔ Abort run", type="secondary",
+                     disabled=state["cancel_requested"],
+                     help="Stop the run. It finishes the chunk of series "
+                          "already in flight, then stops — no partial "
+                          "results are saved."):
+            run_state.request_cancel()
+            st.rerun()
+    if state["cancel_requested"]:
+        st.warning("Abort requested — finishing the current chunk, then "
+                   "stopping.")
+    _render_log(expanded=True)
     time.sleep(1.5)
     st.rerun()
 elif state["error"]:
     st.error(f"Run failed:\n\n```\n{state['error']}\n```")
+    _render_log(expanded=True)
+elif state["cancelled"]:
+    st.warning("Run aborted. Nothing was saved — previous runs are "
+               "untouched.")
+    _render_log(expanded=False)
 elif state["run_id"]:
-    st.success(f"Run **{state['run_id']}** complete — open the Explorer or "
-               "Portfolio page.")
+    runs_now = db.load_runs(db.stamp())
+    row = runs_now[runs_now["run_id"] == state["run_id"]]
+    label = db.run_label(row.iloc[0]) if not row.empty else "The run"
+    st.success(f"**{label}** finished in {run_state.elapsed():.0f}s — open "
+               "the Explorer or Portfolio page.")
+    _render_log(expanded=False)
     st.cache_data.clear()
 
 ui.section("Previous runs",
