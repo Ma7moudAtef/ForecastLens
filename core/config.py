@@ -60,6 +60,24 @@ class GateConfig(BaseModel):
     min_cv_origins: int = Field(3, ge=2)
 
 
+class RateConfig(BaseModel):
+    """How a consumption rate is obtained for each series.
+
+    1. `cons_rate` supplied  → use it exactly as given, in the planner's own
+       units (kg per tonne, tonne per tonne, litres per case…). The engine
+       never re-derives or rescales a supplied rate.
+    2. no `cons_rate` but a driver exists → derive `qty ÷ driver`, but ONLY
+       when `derive_missing` is on. It is off by default because a missing
+       rate usually means the material is not driver-dependent, and dividing
+       a steady quantity by a volatile driver manufactures noise: on the
+       sample data the derived rate is ~11x more volatile than the quantity
+       it came from, in 92% of series.
+    3. neither                → Absolute mode, quantity forecast directly.
+    """
+
+    derive_missing: bool = False
+
+
 class DriverConfig(BaseModel):
     """Driver (a.k.a. production) handling.
 
@@ -140,6 +158,7 @@ class EngineConfig(BaseModel):
     granularity: Granularity = Granularity.MONTHLY
     scope: RunScope = Field(default_factory=RunScope)
     gate: GateConfig = Field(default_factory=GateConfig)
+    rate: RateConfig = Field(default_factory=RateConfig)
     driver: DriverConfig = Field(default_factory=DriverConfig)
     models: ModelConfig = Field(default_factory=ModelConfig)
     cv: CVConfig = Field(default_factory=CVConfig)

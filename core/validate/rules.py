@@ -140,6 +140,37 @@ def rule_orphan_series(raw: RawTables, cfg: EngineConfig) -> list[ValidationWarn
     return out
 
 
+def rule_derivable_rates(raw: RawTables, cfg: EngineConfig) -> list[ValidationWarning]:
+    """Items with no cons_rate whose line and output DO have driver data.
+
+    Surfaced so the option is discoverable, not applied automatically: an
+    absent rate usually means the material's use does not track output, and
+    dividing a steady quantity by a volatile driver manufactures noise.
+    """
+    if cfg.rate.derive_missing:
+        return []
+    combos = _driver_combos(raw)
+    if not combos:
+        return []
+    unrated = raw.consumption[raw.consumption["rate"].isna()]
+    if unrated.empty:
+        return []
+    items = {
+        r.item_code for r in unrated.itertuples()
+        if (r.line, r.output_type) in combos}
+    if not items:
+        return []
+    return [ValidationWarning(
+        code="RATE_DERIVABLE", severity=Severity.INFO, count=len(items),
+        message=(f"{len(items)} item(s) have no consumption rate, but their "
+                 "line and output do have production data. They are treated "
+                 "as Absolute (quantity forecast directly). If their "
+                 "consumption really does scale with output, switch on "
+                 "'Derive missing consumption rates' on the Configure & Run "
+                 "page and the engine will work the rate out as consumption "
+                 "÷ production."))]
+
+
 def rule_rates_without_driver_table(raw: RawTables, cfg: EngineConfig) -> list[ValidationWarning]:
     if not raw.driver.empty:
         return []
@@ -301,6 +332,7 @@ def rule_duplicate_bom_items(raw: RawTables, cfg: EngineConfig) -> list[Validati
 
 ALL_RULES = [
     rule_coercion_failures,
+    rule_derivable_rates,
     rule_duplicate_rows,
     rule_negative_values,
     rule_missing_quantities,

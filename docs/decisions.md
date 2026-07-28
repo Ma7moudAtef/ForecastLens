@@ -83,6 +83,36 @@ series reported 2,613 tonnes where 26.7 were produced. The weighted mean is
 unaffected (the inflation cancels top and bottom), but the displayed driver
 total and the chart overlay were wrong.
 
+## D10 — How a consumption rate is obtained (three rules)
+
+1. **`cons_rate` supplied → used exactly as given, in the planner's own
+   units.** kg per tonne stays kg per tonne; the engine never rescales it and
+   never recomputes it from quantities. This is what makes a rate expressed
+   as kg/t comparable with itself everywhere in the app.
+2. **No `cons_rate`, but driver data exists → the rate may be derived** as
+   `consumption ÷ production`, producing units of `item-uom / driver-uom`.
+   This is **opt-in** (`rate.derive_missing`, "Derive missing consumption
+   rates" on the Configure & Run page), not automatic — see below.
+3. **Neither → Absolute mode**, the quantity is forecast directly (per-day
+   normalized).
+
+A per-item declared mode still outranks all three.
+
+### Why rule 2 is opt-in rather than automatic
+
+Measured on the sample workbook, deriving rates wherever a driver happens to
+exist would reclassify **120 of 121** Absolute items as Relative, and the
+derived rate is about **11× more volatile** than the quantity it came from
+(median CV 0.851 vs 0.078; worse in 92% of series). The reason is structural:
+those materials' consumption does not track output, so dividing a steady
+quantity by a driver with CV ≈ 0.97 manufactures noise, and forecasting that
+noise then multiplying by the plan is worse than forecasting the quantity.
+
+Making it automatic would also contradict D4: mode would once again depend on
+data availability rather than on the material's nature. So the engine flags
+the opportunity (`RATE_DERIVABLE` on the Data page) and lets the planner —
+who knows whether the material scales with output — decide.
+
 ## D9 — The combined rate table shows production, not a derivable ratio
 
 In a combined view the displayed `rate` is the driver-weighted **mean** of

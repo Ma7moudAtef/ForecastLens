@@ -29,6 +29,24 @@ out of fitting, so a plant shutdown cannot make a steady material look
 sporadic. A zero recorded while the line *was* running is a real zero and
 still counts.
 
+## Where the consumption rate comes from
+
+| Your data | What the engine does |
+|---|---|
+| `cons_rate` supplied | Uses it **exactly as given, in your units** — kg per tonne stays kg per tonne. It is never rescaled or recomputed from quantities. |
+| No `cons_rate`, but production data exists | Treated as Absolute by default. Switch on **Derive missing consumption rates** (Configure & Run) to have the engine work it out as consumption ÷ production instead. |
+| No `cons_rate` and no production data | Absolute — the quantity is forecast directly. |
+
+A mode you declare for an item always beats all three.
+
+**Why deriving is off by default.** A missing rate usually means the material
+is not driver-dependent. Dividing a steady consumption quantity by a variable
+production figure manufactures volatility — on the sample data the derived
+rate is around 11× more variable than the quantity it came from — so
+forecasting the quantity directly is more accurate for those items. The Data
+page tells you how many items *could* be derived, so the choice is yours and
+not the engine's.
+
 ## Absolute vs Relative — what "mode" means
 
 - **Relative**: consumption depends on a driver (e.g. kg of additive per ton

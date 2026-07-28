@@ -25,6 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jobs", type=int, help="parallel workers override")
     parser.add_argument("--items", help="comma-separated item codes to "
                                         "forecast (default: every item)")
+    parser.add_argument("--derive-rates", action="store_true",
+                        help="for items with no cons_rate but with driver "
+                             "data, derive rate = consumption / driver")
     args = parser.parse_args(argv)
 
     configure()
@@ -40,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.items:
         cfg.scope.item_codes = [c.strip() for c in args.items.split(",")
                                 if c.strip()]
+    if args.derive_rates:
+        cfg.rate.derive_missing = True
 
     def progress(stage: str, fraction: float) -> None:
         log.info("[%3.0f%%] %s", fraction * 100, stage)

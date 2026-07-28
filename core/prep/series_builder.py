@@ -55,6 +55,9 @@ def build_series(raw: RawTables, cfg: EngineConfig,
     driver_agg = drv.aggregate_driver(raw.driver, cfg.granularity)
     actual_lookup = drv.actual_driver_lookup(driver_agg)
     combos = drv.driver_combos(driver_agg)
+    driver_uom = (driver_agg["driver_uom"].dropna().iloc[0]
+                  if not driver_agg.empty
+                  and driver_agg["driver_uom"].notna().any() else None)
 
     declared_bom = (
         raw.items.dropna(subset=["item_code"])
@@ -78,11 +81,17 @@ def build_series(raw: RawTables, cfg: EngineConfig,
         sid = series_id_of(item, line, output)
 
         has_rate = grp["rate"].notna().any()
+        # Rule 2: a rate can be derived only when the planner asked for it AND
+        # this series' (line, output) actually has driver data to divide by.
+        can_derive = (cfg.rate.derive_missing and not has_rate
+                      and (line, output) in combos)
         mode, mode_source = resolve_mode(
             has_rate,
             declared_bom=_norm(declared_bom.get(item)),
             declared_ui=mode_overrides.get(item),
+            can_derive_rate=can_derive,
         )
+        derived_rate = mode is Mode.RELATIVE and not has_rate
 
         # -- aggregate duplicates to one row per period ----------------------
         agg = grp.groupby("period").agg(
@@ -109,6 +118,26 @@ def build_series(raw: RawTables, cfg: EngineConfig,
             is_orphan = (line, output) not in combos
         else:
             obs["driver_qty"] = np.nan
+
+        # -- derived rate (rule 2) -------------------------------------------
+        # No rate was supplied, but the planner asked the engine to work one
+        # out from what the line actually produced. Periods with no driver
+        # leave the rate undefined rather than guessing a denominator.
+        if derived_rate:
+            dq = obs["driver_qty"].to_numpy(dtype=float)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                obs["rate"] = np.where(
+                    np.isfinite(dq) & (dq > 0),
+                    obs["qty_base"].to_numpy(dtype=float) / dq, np.nan)
+            n_derived = int(np.isfinite(obs["rate"].to_numpy(dtype=float)).sum())
+            warnings.append(ValidationWarning(
+                code="RATE_DERIVED", severity=Severity.INFO, count=n_derived,
+                item_code=item, line=line, output_type=output,
+                message=(f"No consumption rate was supplied; one was derived "
+                         f"for {n_derived} period(s) as consumption ÷ "
+                         "production. Check that this material's use really "
+                         "does scale with output — if it does not, forecasting "
+                         "its quantity directly is more accurate.")))
 
         # -- target ----------------------------------------------------------
         days = np.asarray(days_in_period(periods), dtype=float)
@@ -185,8 +214,14 @@ def build_series(raw: RawTables, cfg: EngineConfig,
         obs_frames.append(obs_out)
 
         rate_uoms = grp["rate_uom"].dropna()
-        target_uom = (rate_uoms.mode().iloc[0] if mode is Mode.RELATIVE and
-                      len(rate_uoms) else item_uom.get(item))
+        if mode is Mode.RELATIVE and len(rate_uoms):
+            # rule 1: the planner's own units, carried through untouched
+            target_uom = rate_uoms.mode().iloc[0]
+        elif derived_rate:
+            # rule 2: units follow from what was divided by what
+            target_uom = f"{item_uom.get(item) or 'qty'}/{driver_uom or 'driver'}"
+        else:
+            target_uom = item_uom.get(item)
 
         series_rows.append({
             "series_id": sid,

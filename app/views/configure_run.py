@@ -133,6 +133,15 @@ with st.form("config"):
                  "windows between the two, evenly spaced, up to "
                  f"{MAX_WINDOWS} of them.")
     with c3:
+        derive_rates = st.checkbox(
+            "Derive missing consumption rates", value=False,
+            help="For materials with no cons_rate but with production data, "
+                 "work the rate out as consumption ÷ production and forecast "
+                 "them as Relative. Leave off unless those materials really "
+                 "do scale with output: dividing a steady quantity by a "
+                 "variable production figure adds noise, and forecasting the "
+                 "quantity directly is then more accurate. A supplied "
+                 "cons_rate is always used exactly as given, in your units.")
         fast_mode = st.checkbox(
             "Fast mode", value=False,
             help="Skip the lookback-window sweep — fewer candidates, quicker "
@@ -168,6 +177,7 @@ if submitted:
             forecast={"horizon": int(horizon)},
             gate={"min_history_competition": int(min_hist),
                   "seasonal_min_history": int(seasonal_min)},
+            rate={"derive_missing": derive_rates},
             models={"lookback_windows": window_sweep(w_short, w_long),
                     "disabled_models": disabled},
             fast_mode=fast_mode,
