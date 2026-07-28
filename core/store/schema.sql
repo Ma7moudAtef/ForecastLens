@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS series (
     n_periods      INTEGER,             -- span length incl. gap-filled
     n_observed     INTEGER,             -- periods with real observations
     n_reliable     INTEGER,             -- periods usable for fitting
+    n_applicable   INTEGER,             -- periods where the line actually ran
     is_orphan      INTEGER NOT NULL DEFAULT 0,
     pattern_class  TEXT,
     adi            REAL,
@@ -67,6 +68,9 @@ CREATE TABLE IF NOT EXISTS observation (
     target        REAL,                 -- prepared target (rate, or per-day qty)
     is_gap_filled INTEGER NOT NULL DEFAULT 0,
     is_reliable   INTEGER NOT NULL DEFAULT 1,
+    -- 0 when the line did not run at all that period (no rate AND no driver):
+    -- not a zero-demand observation, so it is excluded from classification
+    is_applicable INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (series_id, period)
 );
 

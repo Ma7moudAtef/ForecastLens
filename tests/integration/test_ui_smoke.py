@@ -172,7 +172,9 @@ def test_combined_view_charts_rate_for_relative_and_quantity_for_absolute():
 
 
 def test_combined_relative_rate_is_driver_weighted_not_averaged():
-    """The number behind the rate chart must be Σdemand ÷ Σdriver."""
+    """The combined rate is Σ(rate·driver) ÷ Σdriver over the member
+    series-periods — a driver-weighted average of the recorded rates, not a
+    plain average, and not derived from quantities."""
     import numpy as np
 
     from app.components import db as app_db
@@ -187,15 +189,23 @@ def test_combined_relative_rate_is_driver_weighted_not_averaged():
     agg = aggregate_forecasts(forecasts, relative, group_dims=[])
     assert not agg.empty
 
-    row = agg[agg["driver_plan"] > 0].iloc[0]
-    assert row["rate"] == pytest.approx(row["demand"] / row["driver_plan"])
-
-    period_rows = forecasts[
+    row = agg[agg["rate"].notna() & (agg["driver_plan"] > 0)].iloc[0]
+    members = forecasts[
         forecasts["series_id"].isin(set(relative["series_id"])) &
-        (forecasts["period"] == row["period"])]
-    plain_mean = period_rows["target_value"].mean()
-    assert not np.isclose(row["rate"], plain_mean), \
+        (forecasts["period"] == row["period"])].dropna(subset=["driver_plan"])
+
+    weighted = ((members["target_value"] * members["driver_plan"]).sum()
+                / members["driver_plan"].sum())
+    assert row["rate"] == pytest.approx(weighted)
+    assert not np.isclose(row["rate"], members["target_value"].mean()), \
         "combined rate equals a plain average — rates must be driver-weighted"
+
+    # the displayed production counts each line once, not once per item
+    assert row["driver_plan"] < members["driver_plan"].sum()
+    assert row["driver_plan"] == pytest.approx(
+        members.merge(relative[["series_id", "line", "output_type"]],
+                      on="series_id")
+        .drop_duplicates(["line", "output_type"])["driver_plan"].sum())
 
 
 def test_portfolio_carries_the_merged_export_section():

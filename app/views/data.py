@@ -15,8 +15,8 @@ import tempfile
 import pandas as pd
 import streamlit as st
 
-from app.components import (db, filebrowser, items as item_utils, paths,
-                            samples, tables, ui)
+from app.components import (datacache, db, filebrowser, items as item_utils,
+                            paths, samples, tables, ui)
 from core.analyze.statistics import analyze_all
 from core.config import AppConfig, EngineConfig
 from core.io.excel_source import ExcelSource
@@ -134,12 +134,9 @@ with col_dl:
                  "it. Use it as the template for your own data.")
 
 
-@st.cache_data(show_spinner="Reading and validating the workbook…")
-def _analyze(p: str, mtime: float):
+def _compute_analysis(p: str, overrides: dict[str, str]):
     raw = ExcelSource(p).load()
     warnings = rules.run_all(raw, cfg)
-    overrides = {r.item_code: r.mode
-                 for r in db.repo().get_mode_overrides().itertuples()}
     prep = build_series(raw, cfg, mode_overrides=overrides)
     analyzed = analyze_all(prep, cfg)
     wdf = pd.DataFrame([{
@@ -156,9 +153,33 @@ def _analyze(p: str, mtime: float):
     return summary, wdf, analyzed, raw.items
 
 
-summary, warnings_df, analyzed, bom_items = _analyze(
-    active, Path(active).stat().st_mtime)
+@st.cache_data(show_spinner=False)
+def _analyze(p: str, key: str, overrides: dict[str, str]):
+    """Session cache in front of the on-disk cache, so the workbook is read
+    and validated once per machine rather than once per app start."""
+    return datacache.get_or_compute(key, lambda: _compute_analysis(p, overrides))
+
+
+mode_overrides = {r.item_code: r.mode
+                  for r in db.repo().get_mode_overrides().itertuples()}
+cache_key = datacache.fingerprint(Path(active), cfg, mode_overrides)
+with st.spinner("Reading and validating the workbook…"):
+    (summary, warnings_df, analyzed, bom_items), from_cache = _analyze(
+        active, cache_key, mode_overrides)
 desc_lookup = item_utils.description_lookup(bom_items)
+
+cache_note = st.columns([3, 1])
+with cache_note[1]:
+    if from_cache:
+        st.caption("⚡ loaded from cache")
+    if st.button("↻ Re-read file", key="refresh_analysis",
+                 help="Read and validate the workbook again from scratch. "
+                      "Normally unnecessary — the cached result is reused "
+                      "only while the file, the settings and your mode "
+                      "declarations are unchanged."):
+        datacache.clear()
+        st.cache_data.clear()
+        st.rerun()
 
 tabs = st.tabs(["📊 Summary", "⚠️ Validation", "📋 bom", "📈 consumption",
                 "🏭 prod", "📐 consumption_figs", "🏷️ Item modes"])

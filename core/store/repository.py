@@ -68,6 +68,17 @@ class Repository:
             "UPDATE run SET scope_note='all items'"
             " WHERE scope_note IS NULL OR scope_note=''")
 
+        obs_cols = {row[1] for row in
+                    self.conn.execute("PRAGMA table_info(observation)")}
+        if obs_cols and "is_applicable" not in obs_cols:
+            self.conn.execute("ALTER TABLE observation ADD COLUMN "
+                              "is_applicable INTEGER NOT NULL DEFAULT 1")
+        series_cols = {row[1] for row in
+                       self.conn.execute("PRAGMA table_info(series)")}
+        if series_cols and "n_applicable" not in series_cols:
+            self.conn.execute("ALTER TABLE series ADD COLUMN "
+                              "n_applicable INTEGER")
+
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()

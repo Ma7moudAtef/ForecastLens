@@ -194,6 +194,13 @@ if len(matched) == 1 and set(split_dims) == {"item_code", "line", "output_type"}
                 f"{row['n_reliable']} usable for fitting  \n"
                 f"**Data quality:** {row['data_quality']:.2f} · "
                 f"**Forecastability:** {row['forecastability']:.2f}")
+            n_applicable = row.get("n_applicable")
+            if pd.notna(n_applicable) and n_applicable < row["n_periods"]:
+                skipped = int(row["n_periods"] - n_applicable)
+                st.caption(
+                    f"{skipped} period(s) had no production on this line at "
+                    "all, so they are not counted as zero demand — the line "
+                    "simply did not run.")
             st.markdown(
                 f"**Selected model:** `{s['model_name']}`"
                 + (f" (window {int(s['window'])})" if pd.notna(s["window"]) else "")
@@ -276,10 +283,10 @@ else:
     ui.section("Combined view",
                "Everything matching your selection, combined across whichever "
                "dimensions you left out. Relative items are shown as a "
-               "consumption rate (total demand ÷ total driver — never an "
-               "average of rates); Absolute items are shown as consumption "
-               "quantity. The two cannot share an axis, so pick one at a "
-               "time.")
+               "consumption rate, each period weighted by the production it "
+               "was consumed against — never a plain average of rates. "
+               "Absolute items are shown as consumption quantity. A rate and "
+               "a quantity cannot share an axis, so pick one at a time.")
 
     # Rates and quantities are different units and must never be mixed into
     # one number. Split the selection by mode and chart one mode at a time.
@@ -341,22 +348,33 @@ else:
         g_fc, g_obs = agg_fc, agg_obs
 
     if is_relative_view:
-        # Σdemand ÷ Σdriver — the driver-weighted combined rate, computed by
-        # the aggregation. Rates are never summed or plainly averaged.
+        # Σ(rate·driver) ÷ Σdriver — the driver-weighted mean of the recorded
+        # rates. History and forecast are computed the same way, so the two
+        # halves of this chart are on one scale and directly comparable.
+        rated = g_fc[g_fc["rate"].notna()]
+        dropped = len(g_fc) - len(rated)
+        if dropped:
+            st.caption(
+                f"{dropped} forecast period(s) are not charted: no production "
+                "plan covers them, so no combined rate can be formed. Series "
+                "whose history ends early forecast into periods your plan "
+                "does not reach.")
         fig = charts.series_chart(
             g_obs.rename(columns={"rate": "value"}).sort_values("period"),
-            g_fc.rename(columns={"rate": "value"}).sort_values("period"),
+            rated.rename(columns={"rate": "value"}).sort_values("period"),
             "value", "value",
-            driver=(g_obs.rename(columns={"driver_qty": "driver_qty"})
-                    [["period", "driver_qty"]].dropna()
+            driver=(g_obs[["period", "driver_qty"]].dropna()
                     if "driver_qty" in g_obs.columns else None),
             title="Combined consumption rate (cons_rate)")
         chart_help = (
-            "The consumption rate for this group: total demand divided by "
-            "total driver in each period — a driver-weighted average, never "
-            "a plain average of rates. Grey dotted line is the driver "
-            "itself. Prediction bands are not shown here because summed "
-            "bounds do not divide into a meaningful rate interval.")
+            "The consumption rate for this group, in the same units as the "
+            "cons_rate in your data. Each period's rate is weighted by the "
+            "production it was consumed against — a driver-weighted average, "
+            "never a plain average of rates. History and forecast are "
+            "calculated the same way, so they are directly comparable. Grey "
+            "dotted line is the production itself, counted once per line "
+            "rather than once per item. Prediction bands are not shown: "
+            "summed bounds do not divide into a meaningful rate interval.")
     else:
         fig = charts.series_chart(
             g_obs.rename(columns={"qty_base": "value"}).sort_values("period"),
@@ -387,7 +405,8 @@ else:
             if c in show.columns]
     ui.table(show[cols],
              "demand = forecast units. driver_plan = planned production for "
-             "the period. rate = total demand ÷ total driver (a "
-             "driver-weighted average — never a plain average of rates). "
+             "the period, counted once per line rather than once per item. "
+             "rate = the driver-weighted average of the member rates, in "
+             "your data's own cons_rate units — never a plain average. "
              "n_series = how many item/line/output combinations are in the "
              "row.", hide_index=True)

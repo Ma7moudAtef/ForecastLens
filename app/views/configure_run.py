@@ -16,7 +16,7 @@ import streamlit as st
 import pandas as pd
 
 from app.components import db, filebrowser, items as item_utils, paths, run_state, ui
-from core.config import EngineConfig
+from core.config import MAX_WINDOWS, EngineConfig, window_sweep
 from core.models.registry import ALL_MODEL_NAMES
 
 st.title("⚙️ Configure & Run")
@@ -27,6 +27,7 @@ st.title("⚙️ Configure & Run")
 NEVER_DISABLED = ("Naive", "StandardRateAnchor", "CategoryPrior")
 SELECTABLE_MODELS = [n for n in ALL_MODEL_NAMES
                      if n not in NEVER_DISABLED and n != "ARIMA"]
+
 
 
 @st.cache_data(show_spinner="Reading the item list…")
@@ -94,10 +95,12 @@ if scope_choice != "All materials":
 with st.form("config"):
     c1, c2, c3 = st.columns(3)
     with c1:
-        horizon = st.select_slider(
-            "Forecast horizon (periods)", options=[3, 6, 12, 24], value=12,
-            help="How many periods into the future to forecast. Longer "
-                 "horizons always carry wider uncertainty bands.")
+        horizon = st.number_input(
+            "Forecast horizon (periods)", min_value=1, max_value=120,
+            value=12, step=1,
+            help="How many periods into the future to forecast. Use the + / − "
+                 "buttons or type a number. Longer horizons always carry "
+                 "wider uncertainty bands.")
         granularity = st.selectbox(
             "Granularity", ["monthly", "weekly", "daily"],
             help="The period size of your data. The seasonal cycle length "
@@ -118,10 +121,17 @@ with st.form("config"):
             help="Seasonal models need two full cycles to estimate a pattern "
                  "honestly. Below this, they are kept out of the "
                  "competition.")
-        windows = st.multiselect(
-            "Lookback windows", [2, 3, 4, 6, 9, 12], default=[3, 6, 12],
-            help="Window lengths tried by the moving-average models — how "
-                 "many recent periods count as 'still representative'.")
+        w_short = st.number_input(
+            "Shortest lookback window", min_value=2, max_value=120, value=3,
+            step=1,
+            help="The shortest moving-average window to try — how few recent "
+                 "periods may count as 'still representative'.")
+        w_long = st.number_input(
+            "Longest lookback window", min_value=2, max_value=120, value=12,
+            step=1,
+            help="The longest moving-average window to try. The engine sweeps "
+                 "windows between the two, evenly spaced, up to "
+                 f"{MAX_WINDOWS} of them.")
     with c3:
         fast_mode = st.checkbox(
             "Fast mode", value=False,
@@ -136,6 +146,8 @@ with st.form("config"):
             help="Remove specific models from every competition. The "
                  "fallback models cannot be disabled — something must always "
                  "be able to produce a forecast.")
+    st.caption(f"Moving-average windows that will be tried: "
+               f"{window_sweep(w_short, w_long)}")
     submitted = st.form_submit_button(
         "🚀 Run forecast", type="primary",
         help="Start the batch. It runs in the background and writes results "
@@ -156,7 +168,7 @@ if submitted:
             forecast={"horizon": int(horizon)},
             gate={"min_history_competition": int(min_hist),
                   "seasonal_min_history": int(seasonal_min)},
-            models={"lookback_windows": sorted(windows) or [3],
+            models={"lookback_windows": window_sweep(w_short, w_long),
                     "disabled_models": disabled},
             fast_mode=fast_mode,
             n_jobs=int(n_jobs),

@@ -117,6 +117,31 @@ def build_series(raw: RawTables, cfg: EngineConfig,
         else:
             obs["target"] = obs["qty_base"] / days  # per-day normalization
 
+        # -- applicability ---------------------------------------------------
+        # A zero consumption rate in a period where the driver was also zero
+        # (or has no record) is not a real zero-demand observation: the line
+        # simply did not run, so a "per unit of output" rate has no meaning.
+        # Counting those periods as zeros would make steady materials look
+        # intermittent and drag every average down.
+        applicable = np.ones(len(obs), dtype=bool)
+        if mode is Mode.RELATIVE:
+            dq_raw = obs["driver_qty"].to_numpy(dtype=float)
+            rate_raw = obs["rate"].to_numpy(dtype=float)
+            no_driver = np.isnan(dq_raw) | (dq_raw <= 0)
+            no_rate = np.isnan(rate_raw) | (rate_raw == 0)
+            applicable = ~(no_driver & no_rate)
+            n_na = int((~applicable).sum())
+            if n_na:
+                warnings.append(ValidationWarning(
+                    code="NO_OUTPUT_PERIOD", severity=Severity.INFO,
+                    count=n_na, item_code=item, line=line, output_type=output,
+                    message=(f"{n_na} period(s) have no consumption rate and "
+                             "no production on this line and output — the "
+                             "line did not run. These periods are not "
+                             "treated as zero demand: they are excluded from "
+                             "the demand-pattern classification and from "
+                             "fitting.")))
+
         # -- reliability -----------------------------------------------------
         reliable = np.ones(len(obs), dtype=bool)
         if mode is Mode.RELATIVE:
@@ -155,6 +180,7 @@ def build_series(raw: RawTables, cfg: EngineConfig,
             "target": obs["target"].to_numpy(dtype=float),
             "is_gap_filled": is_gap.to_numpy(dtype=bool).astype(int),
             "is_reliable": reliable.astype(int),
+            "is_applicable": applicable.astype(int),
         })
         obs_frames.append(obs_out)
 
@@ -175,6 +201,7 @@ def build_series(raw: RawTables, cfg: EngineConfig,
             "n_periods": len(periods),
             "n_observed": int((~is_gap).sum()),
             "n_reliable": int(reliable.sum()),
+            "n_applicable": int(applicable.sum()),
             "is_orphan": int(is_orphan),
         })
 

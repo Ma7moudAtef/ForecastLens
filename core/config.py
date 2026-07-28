@@ -34,6 +34,24 @@ PERIOD_FREQ: dict[Granularity, str] = {
 }
 
 
+#: how many moving-average windows a sweep may try — each one is an extra
+#: candidate on every series, so a wide range is sampled, not exhausted
+MAX_WINDOWS = 6
+
+
+def window_sweep(shortest: int, longest: int,
+                 limit: int = MAX_WINDOWS) -> list[int]:
+    """Evenly spaced whole-number lookback windows covering
+    [shortest, longest]. Order of the arguments does not matter."""
+    lo, hi = sorted((int(shortest), int(longest)))
+    lo = max(2, lo)
+    hi = max(lo, hi)
+    if hi - lo + 1 <= limit:
+        return list(range(lo, hi + 1))
+    step = (hi - lo) / (limit - 1)
+    return sorted({int(round(lo + i * step)) for i in range(limit)})
+
+
 class GateConfig(BaseModel):
     """History thresholds that decide which models may compete."""
 

@@ -143,8 +143,18 @@ def build_contexts(prep: PreparedData, analyzed: pd.DataFrame,
         target = np.nan_to_num(g["target"].to_numpy(dtype=float), nan=0.0)
         reliable = g["is_reliable"].to_numpy(dtype=bool)
         y_fit = _interpolate_unreliable(target, reliable)
-        driver = g["driver_qty"].to_numpy(dtype=float) \
-            if row.mode == Mode.RELATIVE.value else None
+        driver = None
+        if row.mode == Mode.RELATIVE.value:
+            driver = g["driver_qty"].to_numpy(dtype=float)
+            # The driver is the weight in every driver-weighted average
+            # (Mean, MovingAverage, WeightedMovingAverage). Periods excluded
+            # from fitting must carry no weight: their target was filled in
+            # by interpolation, so letting the real driver vote for a
+            # synthetic value would bias the average.
+            usable = reliable.copy()
+            if "is_applicable" in g.columns:
+                usable &= g["is_applicable"].to_numpy(dtype=bool)
+            driver = np.where(usable, driver, np.nan)
         prior_value, prior_level, prior_siblings, prior_cat = _prior_for(
             row.item_code, row.mode, items_idx, pools)
         contexts.append(SeriesContext(
@@ -459,7 +469,7 @@ def _persist(repo: Repository, run_id: str, cfg: EngineConfig, raw, prep,
     series_cols = [
         "series_id", "item_code", "line", "output_type", "mode", "mode_source",
         "target_uom", "first_period", "last_period", "n_periods", "n_observed",
-        "n_reliable", "is_orphan", "pattern_class", "adi", "cv2",
+        "n_reliable", "n_applicable", "is_orphan", "pattern_class", "adi", "cv2",
         "trend_strength", "seasonality_strength", "stationary", "autocorr_lag1",
         "outlier_pct", "missing_pct", "structural_break_period",
         "forecastability", "data_quality"]

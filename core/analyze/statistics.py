@@ -121,6 +121,13 @@ def analyze_all(prep: PreparedData, cfg: EngineConfig) -> pd.DataFrame:
     rows = []
     for sid, g in obs.groupby("series_id", sort=False):
         g = g.sort_values("period")
+        # Periods where the line did not run at all (no rate AND no driver)
+        # are not zero-demand observations — counting them would inflate ADI
+        # and misclassify steady materials as intermittent.
+        if "is_applicable" in g.columns:
+            g = g[g["is_applicable"] == 1]
+        if g.empty:
+            g = obs[obs["series_id"] == sid].sort_values("period")
         span = g["target"].to_numpy(dtype=float)
         span = np.nan_to_num(span, nan=0.0)
         observed = g.loc[g["is_gap_filled"] == 0, "target"].dropna().to_numpy(dtype=float)

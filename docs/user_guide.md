@@ -19,6 +19,16 @@ Four sheets (only the first two are mandatory):
 | `prod` | The driver (production output, cases, orders…). May be absent entirely for trading/e-commerce businesses. |
 | `consumption_figs` | Engineered standard rates, if you have them. |
 
+## Periods when the line did not run
+
+If a material has no consumption rate in a period **and** there was no
+production on that line and output, the engine treats the period as "not
+applicable" rather than as zero demand — there was nothing to consume
+against. Those periods are left out of the demand-pattern classification and
+out of fitting, so a plant shutdown cannot make a steady material look
+sporadic. A zero recorded while the line *was* running is a real zero and
+still counts.
+
 ## Absolute vs Relative — what "mode" means
 
 - **Relative**: consumption depends on a driver (e.g. kg of additive per ton
@@ -59,14 +69,20 @@ while working.
      never modified.
    - Whichever source you pick stays picked until you change it; saving an
      edit moves you to your working copy.
+   - Reading and validating a workbook is **cached on disk**, so reopening
+     the app is instant instead of re-reading everything. The cache is keyed
+     to the file, the analysis settings and your mode declarations, so it can
+     never serve a stale picture; **↻ Re-read file** forces a fresh pass.
    - Orphan items — a rate with no driver ever recorded — appear in red with
      the two ways to resolve them.
 3. **Configure & Run** — choose the **scope** first: all materials, a single
    item, or a list of items (picked by description). A scoped run is far
    faster and is judged exactly the same way — the engine still studies the
    full dataset, so cold-start items keep borrowing behaviour from all their
-   category siblings; only forecasting is restricted. Then set horizon
-   (3/6/12/24), thresholds and model toggles, and press Run.
+   category siblings; only forecasting is restricted. Then set the horizon,
+   thresholds and lookback windows — all of them + / − steppers you can dial
+   to any value — and press Run. The moving-average windows actually tried
+   are listed under the settings before you launch.
    - Runs appear as **Run 1, Run 2, …** with their date and what they
      covered. Every run is kept, so you can switch back at any time; items a
      run did not cover keep the results of the run that last included them.
@@ -93,10 +109,14 @@ while working.
      Switch to *Reconstructed demand* to see rate × planned production.
    - For an **Absolute** item the chart shows consumption quantity.
    - In the **combined view** the same rule holds: Relative selections are
-     charted as a consumption rate (total demand ÷ total driver — never an
-     average of rates), Absolute selections as consumption quantity. If your
-     selection mixes both, a **Show** switch appears: a rate and a quantity
-     are different units and cannot share an axis.
+     charted as a consumption rate, Absolute selections as consumption
+     quantity. If your selection mixes both, a **Show** switch appears: a
+     rate and a quantity are different units and cannot share an axis.
+   - A combined rate is the **driver-weighted average of the recorded
+     rates** — each period's rate counts in proportion to the production it
+     was consumed against. History and forecast are computed the same way,
+     so they sit on one scale and are directly comparable. The driver shown
+     is the real production for the line, counted once, not once per item.
 5. **Portfolio & Export** — the triage screen. Badges tell you where to
    spend your attention: data-quality issues first, then structural changes,
    declining accuracy, manual reviews. Everything else is "automatic OK".
