@@ -16,7 +16,7 @@ def render(container=None) -> None:
     kind = "packaged app" if paths.is_frozen() else "web / source"
     target.divider()
     target.caption(
-        f"**ForecastEngine {VERSION}** · {kind}  \n"
+        f"**ForecastLens {VERSION}** · {kind}  \n"
         f"build `{build_sha()}` · {build_time()}",
         help="Which build you are running. Quote the build id when "
              "reporting a problem — the exe and the web app show the same "

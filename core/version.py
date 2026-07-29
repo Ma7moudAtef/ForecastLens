@@ -69,7 +69,7 @@ def build_stamp() -> str:
     from core.paths import is_frozen
 
     kind = "exe" if is_frozen() else "source"
-    return f"ForecastEngine {VERSION} · {kind} · build {build_sha()} · {build_time()}"
+    return f"ForecastLens {VERSION} · {kind} · build {build_sha()} · {build_time()}"
 
 
 def write_build_info(target: Path, sha: str, built: str | None = None) -> Path:

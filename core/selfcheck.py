@@ -46,7 +46,7 @@ def _check_data_dir() -> CheckResult:
         return CheckResult(
             "Data folder", False,
             f"cannot write to {where} ({type(exc).__name__}: {exc})",
-            "Set FORECASTENGINE_DATA_DIR to a folder you can write to, or "
+            "Set FORECASTLENS_DATA_DIR to a folder you can write to, or "
             "run the app from a location your account owns.")
 
 

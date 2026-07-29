@@ -46,8 +46,12 @@ Environment variables:
 | Variable | Effect |
 |---|---|
 | `FORECASTLENS_DB` | SQLite path the UI reads/writes. Default: `forecastlens.db` inside the data folder below — never beside the code. |
-| `FORECASTENGINE_DATA_DIR` | Overrides the whole user data folder (database, working copy, cache, exports). Default: `%LOCALAPPDATA%\ForecastEngine` on Windows, `~/.local/share/ForecastEngine` on Linux, `~/Library/Application Support/ForecastEngine` on macOS. |
+| `FORECASTLENS_DATA_DIR` | Overrides the whole user data folder (database, working copy, cache, exports). Default: `%LOCALAPPDATA%\ForecastLens` on Windows, `~/.local/share/ForecastLens` on Linux, `~/Library/Application Support/ForecastLens` on macOS. |
 | `FORECASTLENS_SECRET` | If set, every page requires this shared secret once per session |
+
+A build briefly carried the name *ForecastEngine*. If you ran one, nothing is
+lost: `FORECASTENGINE_DATA_DIR` is still accepted, and a `ForecastEngine` data
+folder is adopted automatically when no `ForecastLens` folder exists yet.
 
 All three are resolved in exactly one module, `core.paths`. Nothing else in
 the codebase builds a path — `tests/unit/test_path_discipline.py` fails the
@@ -75,9 +79,9 @@ routinely quarantined by corporate antivirus). On a Windows build machine:
 packaging\build_windows.bat
 ```
 
-Produces `packaging\dist\ForecastEngine.zip`. The user unzips anywhere and
-runs `ForecastEngine-Start.bat` — no Python, no installer, no admin rights,
-no registry writes. Data lives in `%LOCALAPPDATA%\ForecastEngine`.
+Produces `packaging\dist\ForecastLens.zip`. The user unzips anywhere and
+runs `ForecastLens-Start.bat` — no Python, no installer, no admin rights,
+no registry writes. Data lives in `%LOCALAPPDATA%\ForecastLens`.
 
 Verification happens in `.github/workflows/build-exe.yml` on a clean
 `windows-latest` runner: startup self-check, headless launch with a probe of

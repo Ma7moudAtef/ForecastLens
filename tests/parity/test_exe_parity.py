@@ -1,6 +1,6 @@
 """The SAME assertions, run against the frozen binary.
 
-Skipped unless FORECASTENGINE_EXE points at a built binary; CI sets it after
+Skipped unless FORECASTLENS_EXE points at a built binary; CI sets it after
 the packaging step, so a build cannot be published without these passing.
 """
 import subprocess
@@ -17,7 +17,7 @@ def test_binary_reports_its_build(exe_run):
                          capture_output=True, text=True, timeout=300)
     assert out.returncode == 0, out.stderr[-2000:]
     stamp = out.stdout.strip()
-    assert "ForecastEngine" in stamp
+    assert "ForecastLens" in stamp
     assert "exe" in stamp, f"the binary does not know it is frozen: {stamp}"
 
 

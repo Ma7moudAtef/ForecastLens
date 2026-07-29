@@ -136,13 +136,12 @@ def test_data_dir_is_never_inside_the_bundle(monkeypatch, tmp_path):
 def test_data_dir_honours_an_explicit_override(monkeypatch, tmp_path):
     from core import paths
 
-    monkeypatch.setenv("FORECASTENGINE_DATA_DIR", str(tmp_path / "chosen"))
+    monkeypatch.setenv("FORECASTLENS_DATA_DIR", str(tmp_path / "chosen"))
     assert paths.data_dir() == tmp_path / "chosen"
     assert paths.data_dir().exists()
 
 
-def test_data_dir_adopts_a_previous_versions_folder(monkeypatch, tmp_path):
-    """Upgrading must not strand a user's working copy and database."""
+def _posix_home(monkeypatch, tmp_path):
     from core import paths
 
     for env in paths.DATA_DIR_ENVS:
@@ -153,11 +152,43 @@ def test_data_dir_adopts_a_previous_versions_folder(monkeypatch, tmp_path):
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.setattr(paths.os, "name", "posix")
     monkeypatch.setattr(paths.sys, "platform", "linux")
+    return home
 
-    legacy = home / ".local" / "share" / "ForecastLens"
+
+def test_data_dir_adopts_a_previous_versions_folder(monkeypatch, tmp_path):
+    """Renaming the app must not strand a user's working copy and database."""
+    from core import paths
+
+    home = _posix_home(monkeypatch, tmp_path)
+    legacy_name = paths.LEGACY_DIR_NAMES[0]
+    legacy = home / ".local" / "share" / legacy_name
     legacy.mkdir(parents=True)
     (legacy / "forecastlens.db").write_text("old data", encoding="utf-8")
     assert paths.data_dir() == legacy
+
+
+def test_an_existing_folder_beats_the_preferred_one(monkeypatch, tmp_path):
+    """A user whose data sits in a lower-priority location must keep it.
+    Choosing the preferred path instead hands them an empty app and no
+    explanation — which is exactly what a rename would otherwise cause."""
+    from core import paths
+
+    home = _posix_home(monkeypatch, tmp_path)
+    preferred, *_rest = paths._platform_data_dirs(paths.APP_DIR_NAME)
+    lower = home / f".{paths.APP_DIR_NAME.lower()}"
+    lower.mkdir(parents=True)
+    (lower / "forecastlens.db").write_text("real data", encoding="utf-8")
+
+    assert not preferred.exists()
+    assert paths.data_dir() == lower
+
+
+def test_the_preferred_location_is_used_on_a_clean_machine(monkeypatch, tmp_path):
+    from core import paths
+
+    _posix_home(monkeypatch, tmp_path)
+    preferred, *_rest = paths._platform_data_dirs(paths.APP_DIR_NAME)
+    assert paths.data_dir() == preferred
 
 
 def test_data_dir_falls_back_when_the_home_location_is_unwritable(
@@ -176,7 +207,7 @@ def test_data_dir_falls_back_when_the_home_location_is_unwritable(
 def test_db_path_lives_under_the_data_dir(monkeypatch, tmp_path):
     from core import paths
 
-    monkeypatch.setenv("FORECASTENGINE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FORECASTLENS_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("FORECASTLENS_DB", raising=False)
     assert paths.db_path().parent == tmp_path
 
@@ -185,7 +216,7 @@ def test_config_default_db_is_resolved_not_relative(monkeypatch, tmp_path):
     from core import paths
     from core.config import AppConfig
 
-    monkeypatch.setenv("FORECASTENGINE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FORECASTLENS_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("FORECASTLENS_DB", raising=False)
     assert AppConfig().db_path.is_absolute()
     assert AppConfig().db_path.parent == paths.data_dir()

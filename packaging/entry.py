@@ -70,7 +70,7 @@ def _run_forecast(argv: list[str]) -> int:
     from core.paths import db_path
     from core.pipeline import run_forecast
 
-    parser = argparse.ArgumentParser(prog="ForecastEngine --run-forecast")
+    parser = argparse.ArgumentParser(prog="ForecastLens --run-forecast")
     parser.add_argument("--run-forecast", action="store_true")
     parser.add_argument("--input", required=True)
     parser.add_argument("--db", default=None)
@@ -108,7 +108,7 @@ def _export(argv: list[str]) -> int:
     from core.export import export_workbook
     from core.paths import db_path, output_dir
 
-    parser = argparse.ArgumentParser(prog="ForecastEngine --export")
+    parser = argparse.ArgumentParser(prog="ForecastLens --export")
     parser.add_argument("--export", action="store_true")
     parser.add_argument("--db", default=None)
     parser.add_argument("--run", default=None)
@@ -116,7 +116,7 @@ def _export(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     target = Path(args.db) if args.db else db_path()
-    out = Path(args.out) if args.out else output_dir() / "forecastengine_export.xlsx"
+    out = Path(args.out) if args.out else output_dir() / "forecastlens_export.xlsx"
     written = export_workbook(target, args.run, out)
     print(written)
     return 0

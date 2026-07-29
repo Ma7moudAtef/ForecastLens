@@ -8,7 +8,7 @@ from core import selfcheck
 
 
 def test_all_checks_pass_in_a_healthy_environment(tmp_path, monkeypatch):
-    monkeypatch.setenv("FORECASTENGINE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FORECASTLENS_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("FORECASTLENS_DB", raising=False)
     results = selfcheck.run_checks()
     failures = [r for r in results if not r.ok]
@@ -18,10 +18,10 @@ def test_all_checks_pass_in_a_healthy_environment(tmp_path, monkeypatch):
 
 
 def test_report_is_readable_and_states_the_outcome(tmp_path, monkeypatch):
-    monkeypatch.setenv("FORECASTENGINE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FORECASTLENS_DATA_DIR", str(tmp_path))
     ok, text = selfcheck.report()
     assert ok
-    assert "ForecastEngine" in text          # build stamp on the first line
+    assert "ForecastLens" in text          # build stamp on the first line
     assert "Startup checks passed" in text
     assert "Traceback" not in text
 
@@ -35,12 +35,12 @@ def test_unwritable_data_folder_is_reported_with_a_remedy(monkeypatch, tmp_path)
                         lambda: (_ for _ in ()).throw(PermissionError("denied")))
     result = selfcheck._check_data_dir()
     assert not result.ok
-    assert "FORECASTENGINE_DATA_DIR" in result.remedy
+    assert "FORECASTLENS_DATA_DIR" in result.remedy
     assert "Traceback" not in result.line()
 
 
 def test_unopenable_database_is_reported_with_a_remedy(monkeypatch, tmp_path):
-    monkeypatch.setenv("FORECASTENGINE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FORECASTLENS_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(selfcheck.sqlite3, "connect",
                         lambda *a, **k: (_ for _ in ()).throw(
                             sqlite3.OperationalError("unable to open")))

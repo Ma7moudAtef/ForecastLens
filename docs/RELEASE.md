@@ -14,7 +14,7 @@ A build starts automatically every time a change lands on `main`. To fetch it:
 3. In the left sidebar click **Build Windows EXE**.
 4. Click the newest run at the top of the list — a green ✓ means it passed.
 5. Scroll to the bottom, to the **Artifacts** box.
-6. Click **ForecastEngine-windows-`<sha>`** to download the zip.
+6. Click **ForecastLens-windows-`<sha>`** to download the zip.
 
 The `<sha>` is the first characters of the commit the build came from, so two
 downloads with different names are genuinely different builds. The same
@@ -41,7 +41,7 @@ git push origin v1.0.0
 ```
 
 The workflow builds, verifies, creates a **Release** named after the tag and
-attaches `ForecastEngine-windows-<sha>.zip` to it. Releases live under the
+attaches `ForecastLens-windows-<sha>.zip` to it. Releases live under the
 repository's **Releases** section and never expire.
 
 ## 4. Install and run
@@ -52,13 +52,13 @@ repository's **Releases** section and never expire.
    here avoids warnings later.)
 3. Right-click → **Extract All…** and extract the whole folder. Do not run
    the exe from inside the zip viewer — the app needs the files beside it.
-4. Open the extracted folder and double-click **ForecastEngine-Start.bat**.
+4. Open the extracted folder and double-click **ForecastLens-Start.bat**.
 5. A console window opens and reports its startup checks, then your browser
    opens at `http://localhost:8501`.
 
 Keep the console window open while you use the app; closing it stops the
 engine. No installation, no administrator rights, and nothing is written to
-the registry. Your data lives in `%LOCALAPPDATA%\ForecastEngine`.
+the registry. Your data lives in `%LOCALAPPDATA%\ForecastLens`.
 
 ---
 
@@ -117,12 +117,12 @@ positive on the packer.
 
 ### The console window opens and closes immediately
 
-Run `ForecastEngine.exe` directly from a Command Prompt so the message stays
+Run `ForecastLens.exe` directly from a Command Prompt so the message stays
 visible:
 
 ```
-cd path\to\ForecastEngine
-ForecastEngine.exe --selfcheck
+cd path\to\ForecastLens
+ForecastLens.exe --selfcheck
 ```
 
 The self-check names exactly which of the four things is wrong — data
@@ -130,12 +130,12 @@ folder, database, bundled files or dependencies — and what to do about it.
 
 ### "cannot write to …" in the startup check
 
-The app writes to `%LOCALAPPDATA%\ForecastEngine`. On a locked-down machine
+The app writes to `%LOCALAPPDATA%\ForecastLens`. On a locked-down machine
 that may be denied. Point it somewhere you can write:
 
 ```
-set FORECASTENGINE_DATA_DIR=D:\forecastengine-data
-ForecastEngine.exe
+set FORECASTLENS_DATA_DIR=D:\forecastlens-data
+ForecastLens.exe
 ```
 
 ### The browser does not open
@@ -146,5 +146,5 @@ be using port 8501 — close it and relaunch.
 ### Which build is this?
 
 The sidebar footer shows `build <sha>` and the build timestamp, and
-`ForecastEngine.exe --version` prints the same string. Quote it in any bug
+`ForecastLens.exe --version` prints the same string. Quote it in any bug
 report: it identifies the exact code that produced the results.

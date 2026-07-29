@@ -2,7 +2,7 @@
 
 Lives in core, not in the UI, so the web app, the CLI and the frozen exe all
 produce byte-identical files from the same code — the Portfolio page and
-`ForecastEngine --export` call straight into here.
+`ForecastLens --export` call straight into here.
 """
 from __future__ import annotations
 
@@ -79,5 +79,5 @@ def export_workbook(db_path: str | Path, run_id: str | None = None,
     if not frames:
         raise RuntimeError("nothing to export: no completed run in "
                            f"{db_path}")
-    target = out_path or (output_dir() / "forecastengine_export.xlsx")
+    target = out_path or (output_dir() / "forecastlens_export.xlsx")
     return write_workbook(frames, Path(target))

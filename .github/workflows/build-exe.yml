@@ -56,12 +56,12 @@ jobs:
 
       - name: Add launcher
         shell: pwsh
-        run: Copy-Item packaging/launcher.bat packaging/dist/ForecastEngine/ForecastEngine-Start.bat -Force
+        run: Copy-Item packaging/launcher.bat packaging/dist/ForecastLens/ForecastLens-Start.bat -Force
 
       - name: Startup self-check (the app validates itself)
         shell: pwsh
         run: |
-          $exe = "packaging/dist/ForecastEngine/ForecastEngine.exe"
+          $exe = "packaging/dist/ForecastLens/ForecastLens.exe"
           & $exe --version
           & $exe --selfcheck
           if ($LASTEXITCODE -ne 0) {
@@ -72,7 +72,7 @@ jobs:
       - name: Launch headless and probe the Streamlit server
         shell: pwsh
         run: |
-          $exe = "packaging/dist/ForecastEngine/ForecastEngine.exe"
+          $exe = "packaging/dist/ForecastLens/ForecastLens.exe"
           $proc = Start-Process -FilePath $exe -PassThru -NoNewWindow
           $ok = $false
           foreach ($i in 1..90) {
@@ -91,7 +91,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.run_parity
         shell: pwsh
         env:
-          FORECASTENGINE_EXE: ${{ github.workspace }}\packaging\dist\ForecastEngine\ForecastEngine.exe
+          FORECASTLENS_EXE: ${{ github.workspace }}\packaging\dist\ForecastLens\ForecastLens.exe
         run: |
           pytest tests/parity -q --maxfail=1
           if ($LASTEXITCODE -ne 0) {
@@ -102,21 +102,21 @@ jobs:
       - name: Check bundle size (N3, 300 MB)
         shell: pwsh
         run: |
-          $mb = (Get-ChildItem packaging/dist/ForecastEngine -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          $mb = (Get-ChildItem packaging/dist/ForecastLens -Recurse | Measure-Object Length -Sum).Sum / 1MB
           Write-Output ("Bundle size: {0:N0} MB" -f $mb)
           if ($mb -gt 300) { Write-Error "Bundle exceeds the 300 MB budget"; exit 1 }
 
       - name: Zip
         shell: pwsh
         run: |
-          $name = "ForecastEngine-windows-${{ env.BUILD_SHA }}.zip"
-          Compress-Archive -Path packaging/dist/ForecastEngine -DestinationPath $name -Force
+          $name = "ForecastLens-windows-${{ env.BUILD_SHA }}.zip"
+          Compress-Archive -Path packaging/dist/ForecastLens -DestinationPath $name -Force
           "ZIP_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ForecastEngine-windows-${{ env.BUILD_SHA }}
+          name: ForecastLens-windows-${{ env.BUILD_SHA }}
           path: ${{ env.ZIP_NAME }}
           retention-days: 90
           if-no-files-found: error
@@ -145,8 +145,12 @@ jobs:
             const all = await github.paginate(
               github.rest.actions.listArtifactsForRepo,
               { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 });
+            // the second prefix is the name earlier builds carried; keeping
+            // it here means those artifacts still get pruned instead of
+            // sitting around until they expire
+            const PREFIXES = ['ForecastLens-windows-', 'ForecastEngine-windows-'];
             const builds = all
-              .filter(a => a.name.startsWith('ForecastEngine-windows-') && !a.expired)
+              .filter(a => PREFIXES.some(p => a.name.startsWith(p)) && !a.expired)
               .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             for (const artifact of builds.slice(KEEP)) {
               core.info(`deleting ${artifact.name} (${artifact.created_at})`);

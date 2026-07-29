@@ -21,7 +21,7 @@ def enforce() -> None:
     failures = [r for r in _results() if not r[1]]
     if not failures:
         return
-    st.error("ForecastEngine cannot start — the checks below failed.")
+    st.error("ForecastLens cannot start — the checks below failed.")
     for name, _ok, detail, remedy in failures:
         st.markdown(f"**{name}** — {detail}")
         if remedy:

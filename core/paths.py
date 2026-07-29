@@ -22,11 +22,14 @@ import tempfile
 from pathlib import Path
 
 #: user-visible application folder name
-APP_DIR_NAME = "ForecastEngine"
-#: folders earlier versions used — adopted if they already hold a user's data
-LEGACY_DIR_NAMES = ("ForecastLens",)
-#: explicit override, honoured first (used by tests and locked-down machines)
-DATA_DIR_ENVS = ("FORECASTENGINE_DATA_DIR", "FORECASTLENS_DATA_DIR")
+APP_DIR_NAME = "ForecastLens"
+#: folders earlier versions used — adopted if they already hold a user's data,
+#: so anyone who ran a build carrying the other name keeps their working copy
+LEGACY_DIR_NAMES = ("ForecastEngine",)
+#: explicit override, honoured first (used by tests and locked-down machines).
+#: The first name is the current one; the rest stay accepted so an existing
+#: shortcut or scheduled task does not break.
+DATA_DIR_ENVS = ("FORECASTLENS_DATA_DIR", "FORECASTENGINE_DATA_DIR")
 
 #: where the default workbook lives, bundled vs in a source checkout
 _SAMPLE_CANDIDATES = (
@@ -86,9 +89,14 @@ def _platform_data_dirs(app_name: str) -> list[Path]:
 def data_dir() -> Path:
     """User-writable application directory. ALWAYS writable, never bundled.
 
-    Order: explicit env override → an existing directory from a previous
-    version (so nobody loses their working copy) → the platform location →
-    a temp directory as a last resort on locked-down machines.
+    Order: explicit env override → a directory that ALREADY holds the user's
+    data (this name first, then a name an earlier version used) → the
+    preferred platform location → a temp directory as a last resort on
+    locked-down machines.
+
+    Existing beats preferred, deliberately. Picking the highest-priority
+    location when a lower-priority one is already full of the user's work
+    hands them an empty app and no explanation.
     """
     for env in DATA_DIR_ENVS:
         override = os.environ.get(env)
@@ -98,13 +106,15 @@ def data_dir() -> Path:
             return path
 
     candidates = _platform_data_dirs(APP_DIR_NAME)
-    # adopt a previous version's folder only if it already exists AND the
-    # current one does not — migrating silently would strand the old data
-    if not any(c.exists() for c in candidates):
-        for legacy_name in LEGACY_DIR_NAMES:
-            for legacy in _platform_data_dirs(legacy_name):
-                if legacy.exists():
-                    return legacy
+    for candidate in candidates:
+        if candidate.exists() and _writable(candidate):
+            return candidate
+    # only once this name has no home anywhere: adopt a previous version's
+    # folder rather than starting the user over
+    for legacy_name in LEGACY_DIR_NAMES:
+        for legacy in _platform_data_dirs(legacy_name):
+            if legacy.exists() and _writable(legacy):
+                return legacy
 
     for candidate in candidates:
         if _writable(candidate):

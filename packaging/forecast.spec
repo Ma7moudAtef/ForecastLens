@@ -1,4 +1,4 @@
-# PyInstaller spec — the ForecastEngine desktop build.
+# PyInstaller spec — the ForecastLens desktop build.
 #
 # one-dir mode deliberately: one-file re-extracts to %TEMP% on every launch,
 # which is slow and routinely quarantined by corporate antivirus.
@@ -82,7 +82,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="ForecastEngine",
+    name="ForecastLens",
     console=True,                 # keep the console: the startup self-check
                                   # prints here, and a silent exe is
                                   # undiagnosable for a non-technical user
@@ -92,5 +92,5 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    name="ForecastEngine",
+    name="ForecastLens",
 )

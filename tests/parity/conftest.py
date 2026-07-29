@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample_public.xlsx"
 
 #: CI sets this to the built binary; without it the exe-side tests skip
-EXE_ENV = "FORECASTENGINE_EXE"
+EXE_ENV = "FORECASTLENS_EXE"
 #: keep the parity run small — the assertions are about identity, not scale
 HORIZON = "3"
 
@@ -47,7 +47,7 @@ def exe_run(tmp_path_factory):
     db = workdir / "results.db"
     env = dict(os.environ)
     # the frozen app must write to a user-writable place, never its bundle
-    env["FORECASTENGINE_DATA_DIR"] = str(workdir / "userdata")
+    env["FORECASTLENS_DATA_DIR"] = str(workdir / "userdata")
 
     completed = subprocess.run(
         [str(binary), "--run-forecast", "--input", str(FIXTURE),

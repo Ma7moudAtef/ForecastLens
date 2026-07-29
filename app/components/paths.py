@@ -21,7 +21,7 @@ from core.paths import (  # noqa: F401  (re-exported for the UI)
 )
 
 #: kept for callers that referenced the old single-name constant
-DATA_DIR_ENV = DATA_DIR_ENVS[-1]
+DATA_DIR_ENV = DATA_DIR_ENVS[0]
 
 SHEET_ORDER = ["bom", "consumption", "prod", "consumption_figs",
                "context_calendar"]

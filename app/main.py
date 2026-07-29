@@ -20,7 +20,7 @@ import streamlit as st
 
 from app.components import auth, footer, selfcheck_gate
 
-st.set_page_config(page_title="ForecastEngine", page_icon="📈", layout="wide")
+st.set_page_config(page_title="ForecastLens", page_icon="📈", layout="wide")
 auth.require_secret()
 
 # The launcher runs the same checks before opening a browser; repeating them
