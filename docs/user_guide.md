@@ -193,6 +193,11 @@ while working.
    - The workbook's **first sheet is a `data_dictionary`** carrying that same
      explanation for every column of every sheet, so the file explains itself
      to whoever you send it to.
+   - Every sheet arrives as a **proper Excel table**: banded rows, filter
+     buttons on each heading, the heading row frozen so it stays put while
+     you scroll, columns sized to their contents, long prose wrapped rather
+     than stretched, and numbers with a sensible number of decimals. The
+     sample workbook and your saved working copy are formatted the same way.
 
 ## Reading a forecast
 

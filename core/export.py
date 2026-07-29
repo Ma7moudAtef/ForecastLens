@@ -6,17 +6,25 @@ produce byte-identical files from the same code — the Portfolio page and
 """
 from __future__ import annotations
 
-import io
 from pathlib import Path
 
 import pandas as pd
 
-from core import identity
+from core import identity, xlsx
 from core.export_guide import DICTIONARY_SHEET, guide_frame
 from core.paths import output_dir
 from core.store.repository import Repository
 
 SHEETS = ("forecasts", "selections", "series", "context", "warnings")
+
+#: Columns that measure the same quantity and must share one number format.
+#: A forecast and its four interval bounds are one number seen five ways; a
+#: row showing 0.005 next to an upper bound of 0.00712 reads as a mistake.
+COLUMN_GROUPS = [
+    ("target_value", "lower_80", "upper_80", "lower_95", "upper_95"),
+    ("reconstructed_demand", "demand_lower_80", "demand_upper_80",
+     "demand_lower_95", "demand_upper_95"),
+]
 
 
 def build_frames(db_path: str | Path, run_id: str | None = None,
@@ -79,13 +87,10 @@ def with_dictionary(frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
 
 
 def workbook_bytes(frames: dict[str, pd.DataFrame]) -> bytes:
-    """The export as bytes. The browser download and the file the CLI writes
-    both go through here, so they cannot drift apart."""
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        for name, frame in with_dictionary(frames).items():
-            frame.to_excel(writer, sheet_name=name[:31], index=False)
-    return buffer.getvalue()
+    """The export as bytes, formatted for reading. The browser download and
+    the file the CLI writes both go through here, so they cannot drift
+    apart."""
+    return xlsx.to_bytes(with_dictionary(frames), COLUMN_GROUPS)
 
 
 def write_workbook(frames: dict[str, pd.DataFrame], out_path: Path) -> Path:

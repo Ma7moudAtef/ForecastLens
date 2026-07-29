@@ -676,3 +676,59 @@ def test_the_orphan_is_forecast_on_quantity_and_says_so():
     assert "quantity" in notes
     # and it is not presented as a dead end
     assert "goes back to being forecast as a rate" in notes
+
+
+def test_every_downloadable_workbook_is_a_formatted_table():
+    """Requirement: the files a user downloads are readable tables, not
+    matrices of data. Covers the results export and the sample workbook —
+    the two xlsx files the app hands out."""
+    import io
+
+    import openpyxl
+
+    from app.components import db as app_db, paths, samples
+    from core.export import build_frames, workbook_bytes
+
+    run_id = app_db.repo().latest_complete_run_id()
+    downloads = {
+        "results": workbook_bytes(build_frames(app_db.db_path(), run_id)),
+        "sample": samples.build_sample_workbook(paths.bundled_sample()),
+    }
+
+    for label, payload in downloads.items():
+        book = openpyxl.load_workbook(io.BytesIO(payload))
+        assert book.worksheets, f"{label} has no sheets"
+        for ws in book.worksheets:
+            assert ws.freeze_panes == "A2", f"{label}/{ws.title} scrolls its heading away"
+            assert ws.cell(row=1, column=1).font.bold, \
+                f"{label}/{ws.title} has an unstyled heading"
+            # every column sized deliberately, none left at Excel's default
+            for col in range(1, ws.max_column + 1):
+                letter = openpyxl.utils.get_column_letter(col)
+                width = ws.column_dimensions[letter].width
+                assert width, f"{label}/{ws.title} column {letter} has no width"
+            if ws.max_row > 1:
+                assert ws.tables, f"{label}/{ws.title} is not a real table"
+
+
+def test_the_working_copy_is_formatted_too(tmp_path):
+    """It is the file a planner opens in Excel to edit their data by hand."""
+    import openpyxl
+    import pandas as pd
+
+    from app.components import paths
+
+    frames = paths.read_workbook_sheets(paths.bundled_sample())
+    target = tmp_path / "working.xlsx"
+    paths.write_workbook(frames, target)
+
+    book = openpyxl.load_workbook(target)
+    assert set(book.sheetnames) <= set(paths.SHEET_ORDER)
+    for ws in book.worksheets:
+        assert ws.freeze_panes == "A2"
+
+    # and it still round-trips: the app reads this file straight back
+    reread = paths.read_workbook_sheets(target)
+    pd.testing.assert_frame_equal(
+        reread["consumption"].reset_index(drop=True),
+        frames["consumption"].reset_index(drop=True), check_dtype=False)

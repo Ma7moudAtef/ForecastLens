@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from core import xlsx
 from core.paths import (  # noqa: F401  (re-exported for the UI)
     DATA_DIR_ENVS,
     bundled_sample,
@@ -62,9 +63,11 @@ def read_workbook_sheets(path: Path) -> dict[str, pd.DataFrame]:
 
 
 def write_workbook(frames: dict[str, pd.DataFrame], path: Path) -> None:
-    """Write the input sheets to an xlsx at `path` (working copy)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(path, engine="openpyxl") as writer:
-        for sheet in SHEET_ORDER:
-            if sheet in frames and frames[sheet] is not None:
-                frames[sheet].to_excel(writer, sheet_name=sheet, index=False)
+    """Write the input sheets to an xlsx at `path` (working copy).
+
+    Formatted like every other workbook the app produces — this is the file a
+    planner opens in Excel to edit their data by hand, so it should not
+    arrive as a wall of unsized columns.
+    """
+    xlsx.to_file({sheet: frames[sheet] for sheet in SHEET_ORDER
+                  if frames.get(sheet) is not None}, path)

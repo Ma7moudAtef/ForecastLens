@@ -341,3 +341,46 @@ item split moves from 121/127 to **122 Absolute / 126 Relative**. An item
 whose series span several `(line, output)` combinations, some orphaned and
 some not, would now carry both modes — legitimate, since mode is resolved per
 series, and the combined view already refuses to add a rate to a quantity.
+
+## D16 — Every workbook the app produces is formatted in one place
+
+`core/xlsx.py` is the only thing in the codebase that writes an .xlsx a user
+will open: the results export, the sample workbook, and the working copy the
+Data page saves. It lives in `core/` for the same reason the export does —
+the browser download, `ForecastLens --export` and the CLI must produce the
+same file, and a second `ExcelWriter` somewhere in the UI is exactly how they
+drift apart (that had already happened once with the data dictionary).
+
+Each sheet becomes a real Excel **table** — banded rows, filter buttons,
+frozen heading — rather than a styled range, because that is what makes a
+9,000-row sheet workable rather than merely decorated. Column widths come
+from the content; a column whose text runs past ~46 characters wraps instead
+of stretching off the screen.
+
+**Number formats are chosen from the data, not declared.** A consumption rate
+of 0.004739 and a demand of 12,400 cannot share a fixed decimal count. The
+count is set to show about four significant digits of a *typical* value — the
+median, so one near-zero row cannot give every other row six decimals — then
+adjusted at both ends:
+
+- never fewer than two decimals on a column that holds fractions, because
+  four significant digits of 1234.5 is 1235 and a quantity that arrives
+  without its decimals cannot be recovered by widening the column;
+- widened if the smallest real value would otherwise print as a flat zero,
+  because a p-value shown as `0.0000` reads as "no effect" when it means the
+  opposite.
+
+Columns that measure the same quantity share one format, declared in
+`export.COLUMN_GROUPS`: a forecast and its four interval bounds are one number
+seen five ways, and a row showing `0.005` beside an upper bound of `0.00712`
+reads as a mistake. The grouping is passed in rather than inferred, so the
+generic formatter stays free of export-specific knowledge.
+
+Formatting never touches a value. Everything here is presentation; the numbers
+are written by pandas exactly as computed, which `test_xlsx_formatting.py`
+asserts by round-tripping a frame through the writer.
+
+The Portfolio page now caches the built workbook. A download button needs its
+bytes up front, so without a cache the whole file was rebuilt on every
+checkbox and every sort — a few seconds each on a full catalogue, and that was
+true before the formatting was added.

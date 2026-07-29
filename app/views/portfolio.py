@@ -161,9 +161,25 @@ frames = build_frames(db.db_path(), run_id, series_ids=scoped_ids,
                       sheets=tuple(what))
 st.caption(f"{len(scoped_ids)} series in the export scope.")
 
-# Byte-for-byte the workbook core.export writes, data dictionary included —
-# the browser download and `ForecastLens --export` must not drift apart.
-workbook = workbook_bytes(frames)
+
+@st.cache_data(show_spinner="Preparing the workbook…")
+def _workbook(stamp: float, run: str, sheets: tuple[str, ...],
+              series_ids: tuple[str, ...]) -> bytes:
+    """Byte-for-byte the workbook core.export writes, data dictionary
+    included — the browser download and `ForecastLens --export` must not
+    drift apart.
+
+    Cached because a download button needs its bytes up front, so without
+    this the whole workbook is rebuilt on every checkbox and every sort — a
+    few seconds each time on a full catalogue.
+    """
+    return workbook_bytes(build_frames(db.db_path(), run,
+                                       series_ids=set(series_ids),
+                                       sheets=sheets))
+
+
+workbook = _workbook(db.stamp(), run_id, tuple(what),
+                     tuple(sorted(scoped_ids)))
 
 d1, d2 = st.columns(2)
 with d1:

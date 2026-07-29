@@ -2,10 +2,11 @@
 data_dictionary sheet explaining each column and its function."""
 from __future__ import annotations
 
-import io
 from pathlib import Path
 
 import pandas as pd
+
+from core import xlsx
 
 DATA_DICTIONARY: list[tuple[str, str, str]] = [
     # (sheet, column, what it is / what the engine does with it)
@@ -71,15 +72,11 @@ DATA_DICTIONARY: list[tuple[str, str, str]] = [
 
 
 def build_sample_workbook(source: Path, n_rows: int = 10) -> bytes:
-    """First `n_rows` of every sheet of `source` + the data_dictionary."""
-    buffer = io.BytesIO()
+    """First `n_rows` of every sheet of `source` + the data_dictionary,
+    formatted the same way as every other workbook the app hands out."""
+    frames = {"data_dictionary": pd.DataFrame(
+        DATA_DICTIONARY, columns=["sheet", "column", "what it is / function"])}
     with pd.ExcelFile(source, engine="openpyxl") as xl:
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            pd.DataFrame(DATA_DICTIONARY,
-                         columns=["sheet", "column", "what it is / function"]
-                         ).to_excel(writer, sheet_name="data_dictionary",
-                                    index=False)
-            for name in xl.sheet_names:
-                xl.parse(name).head(n_rows).to_excel(
-                    writer, sheet_name=name, index=False)
-    return buffer.getvalue()
+        for name in xl.sheet_names:
+            frames[name] = xl.parse(name).head(n_rows)
+    return xlsx.to_bytes(frames)
