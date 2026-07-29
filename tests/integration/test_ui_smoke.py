@@ -1,5 +1,6 @@
 """M8: every view renders headlessly against a real result database without
 raising. Streamlit's AppTest drives the scripts exactly as the server would."""
+import html
 from pathlib import Path
 
 import pytest
@@ -194,7 +195,7 @@ def test_combined_view_charts_rate_for_relative_and_quantity_for_absolute():
     # Which chart was drawn is identified by a phrase unique to that branch
     # (AppTest cannot read a plotly figure's own contents) plus the results
     # table's column order, which is wording-independent.
-    RATE_MARKER = "summed bounds do not divide into a meaningful rate"
+    RATE_MARKER = "weighted by production just like the rate itself"
     QUANTITY_MARKER = "consumption quantity for every series"
 
     # Relative: the driver-weighted consumption rate, table led by `rate`.
@@ -515,3 +516,116 @@ def test_configure_run_offers_the_context_controls():
     assert "Use operating context" in boxes
     sliders = {s.label for s in at.slider}
     assert "Minimum context effect to act on" in sliders
+
+
+def test_portfolio_previews_every_export_sheet_with_column_help():
+    """Requirement: look inside the workbook before downloading it, with a ❓
+    on every column."""
+    at = AppTest.from_file(str(APP / "views" / "portfolio.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+
+    headings = " ".join(s.value for s in at.subheader)
+    assert "Look inside the workbook first" in headings
+
+    # One tab per sheet of the download, the dictionary leading. Hover text
+    # is HTML-escaped on the way out, so unescape before matching it.
+    previewed = html.unescape(
+        " ".join(m.value for tab in at.tabs for m in tab.markdown))
+    for sheet in ("data_dictionary", "forecasts", "selections", "series",
+                  "context", "warnings"):
+        assert f"'{sheet}' sheet of the download" in previewed, \
+            f"{sheet} is not previewed"
+    assert any(tab.dataframe for tab in at.tabs), "no sheet rendered a table"
+
+
+def test_previewed_columns_carry_their_own_explanation():
+    from core.export import build_frames, with_dictionary
+    from core.export_guide import tooltip
+    from app.components import db as app_db
+
+    run_id = app_db.repo().latest_complete_run_id()
+    frames = with_dictionary(build_frames(app_db.db_path(), run_id))
+    for sheet, frame in frames.items():
+        if sheet == "data_dictionary":
+            continue
+        for column in frame.columns:
+            assert tooltip(sheet, column), \
+                f"{sheet}.{column} has no explanation for its ❓"
+
+
+def test_the_downloaded_workbook_leads_with_its_data_dictionary():
+    """The browser download and `ForecastLens --export` are the same bytes,
+    so this covers both."""
+    import io
+
+    import pandas as pd
+
+    from core.export import build_frames, workbook_bytes
+    from app.components import db as app_db
+
+    run_id = app_db.repo().latest_complete_run_id()
+    book = workbook_bytes(build_frames(app_db.db_path(), run_id))
+    with pd.ExcelFile(io.BytesIO(book), engine="openpyxl") as xl:
+        assert xl.sheet_names[0] == "data_dictionary"
+        guide = xl.parse("data_dictionary")
+        forecasts = xl.parse("forecasts")
+
+    assert not guide.empty
+    assert set(guide.columns) == {"sheet", "what this sheet is for", "column",
+                                  "what it is", "why you need it"}
+    assert guide["what it is"].fillna("").str.len().gt(0).all()
+    # every column of a real sheet is covered
+    documented = set(guide[guide["sheet"] == "forecasts"]["column"])
+    assert set(forecasts.columns) <= documented
+
+
+def test_no_exported_row_has_a_blank_description():
+    """The item is either in the bom sheet — so it has a name — or it is not,
+    and then it says so. A blank cell is neither."""
+    from core.export import build_frames
+    from app.components import db as app_db
+
+    run_id = app_db.repo().latest_complete_run_id()
+    for sheet, frame in build_frames(app_db.db_path(), run_id).items():
+        if "description" not in frame.columns:
+            continue
+        blank = frame["description"].fillna("").astype(str).str.strip().eq("")
+        assert not blank.any(), \
+            f"{sheet} has {int(blank.sum())} row(s) with no description"
+
+
+def test_configure_run_offers_the_bom_only_switch():
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+    labels = {c.label for c in at.checkbox}
+    assert "Only items listed in the bom sheet" in labels
+    switch = next(c for c in at.checkbox
+                  if c.label == "Only items listed in the bom sheet")
+    assert switch.value is False, "must be opt-in, never a silent default"
+
+
+def test_combined_relative_view_shows_its_prediction_ranges():
+    """Requirement: the combined Relative view must carry 80%/95% ranges the
+    way the Absolute one does. An aggregate with no interval reads as more
+    certain than any of the series behind it."""
+    at = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                           default_timeout=300).run()
+    assert not at.exception
+    rel = _pick_mode(at, "relative")
+    assert not rel.exception
+
+    tables = [el.value for el in rel.dataframe]
+    assert tables, "combined view rendered no table"
+    combined = tables[-1]
+    for column in ("rate_lower_80", "rate_upper_80",
+                   "rate_lower_95", "rate_upper_95"):
+        assert column in combined.columns, f"{column} missing from the table"
+
+    rated = combined.dropna(subset=["rate"])
+    assert not rated.empty
+    assert (rated["rate_lower_95"] <= rated["rate_lower_80"]).all()
+    assert (rated["rate_lower_80"] <= rated["rate"]).all()
+    assert (rated["rate"] <= rated["rate_upper_80"]).all()
+    assert (rated["rate_upper_80"] <= rated["rate_upper_95"]).all()

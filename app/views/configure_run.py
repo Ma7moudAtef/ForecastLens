@@ -40,6 +40,21 @@ def read_catalogue(path: str) -> dict[str, str]:
     lookup = item_utils.description_lookup(bom)
     return item_utils.build_labels(bom["item_code"].dropna().unique(), lookup)
 
+
+@st.cache_data(show_spinner=False)
+def missing_from_bom(path: str) -> int:
+    """How many consumed items have no bom row — the count the 'bom-listed
+    items only' switch would remove."""
+    try:
+        bom = pd.read_excel(path, sheet_name="bom", engine="openpyxl")
+        cons = pd.read_excel(path, sheet_name="consumption", engine="openpyxl")
+    except Exception:
+        return 0
+    known = set(bom["item_code"].dropna().astype(str))
+    used = set(cons["item_code"].dropna().astype(str))
+    return len(used - known)
+
+
 default_path = st.session_state.get("input_path") or (
     str(paths.default_input_path()) if paths.default_input_path() else "")
 
@@ -91,6 +106,23 @@ if scope_choice != "All materials":
         scope_items = [catalogue[p] for p in picks]
         if not picks:
             st.info("Select at least one item, or switch to All materials.")
+
+bom_only = st.checkbox(
+    "Only items listed in the bom sheet", value=False,
+    help="An item consumed but missing from bom has no description and no "
+         "category, so it shows as '(not in bom)' everywhere and cannot "
+         "borrow behaviour from category siblings. Its consumption history "
+         "is still real, so by default it is still forecast. Switch this on "
+         "if your rule is 'not in the master data means it does not exist' — "
+         "but check the Data page first: on some workbooks this removes a "
+         "large part of the catalogue.")
+if bom_only and input_path:
+    _missing = missing_from_bom(input_path)
+    if _missing:
+        st.warning(
+            f"{_missing} item(s) will be left out of this run because they "
+            "have no bom row. The Data page lists them under "
+            "ITEM_NOT_IN_BOM.")
 
 with st.form("config"):
     c1, c2, c3 = st.columns(3)
@@ -189,7 +221,7 @@ if submitted:
                  "All materials.")
     else:
         cfg = EngineConfig(
-            scope={"item_codes": scope_items},
+            scope={"item_codes": scope_items, "bom_items_only": bom_only},
             granularity=granularity,
             forecast={"horizon": int(horizon)},
             gate={"min_history_competition": int(min_hist),

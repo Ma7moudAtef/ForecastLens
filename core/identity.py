@@ -11,11 +11,36 @@ import pandas as pd
 
 ID_COLS = ["item_code", "description", "line", "output_type"]
 
+#: Shown instead of an empty cell when an item has no bom row. A description
+#: column must never be blank: blank reads as "the app lost it", this reads as
+#: "your bom sheet does not cover this item" — which is the actual, fixable
+#: situation. `rule_items_missing_from_bom` reports how many there are.
+MISSING_DESCRIPTION = "(not in bom)"
+#: Rows that are not about one item at all — a warning covering the whole
+#: dataset, say. Different from the above and must not be confused with it.
+NO_ITEM = "(not item-specific)"
+
+
+def _clean(description) -> str:
+    text = "" if description is None else str(description).strip()
+    return "" if text.lower() in ("", "nan", "none", "<na>") else text
+
 
 def label_of(code: str, description: str | None) -> str:
-    if description and str(description).strip() and str(description) != "nan":
-        return f"{description} — {code}"
-    return f"{code} (no description)"
+    text = _clean(description)
+    return f"{text} — {code}" if text else f"{code} (no description)"
+
+
+def describe(code, lookup: dict[str, str]) -> str:
+    """The description for one item code — never an empty string.
+
+    Every user-facing table routes through here, so a row whose item is
+    missing from the bom sheet says so out loud instead of showing a blank
+    cell nobody can interpret.
+    """
+    if code is None or pd.isna(code) or not str(code).strip():
+        return NO_ITEM
+    return _clean(lookup.get(str(code))) or MISSING_DESCRIPTION
 
 
 def description_lookup(items: pd.DataFrame) -> dict[str, str]:
@@ -60,8 +85,7 @@ def expand_series_id(df: pd.DataFrame, lookup: dict[str, str],
     for idx, name in enumerate(["item_code", "line", "output_type"]):
         out[name] = parts[idx].replace("", pd.NA) if idx in parts.columns \
             else pd.NA
-    out["description"] = out["item_code"].map(
-        lambda c: lookup.get(str(c), "") if pd.notna(c) else "")
+    out["description"] = out["item_code"].map(lambda c: describe(c, lookup))
     return out.drop(columns=[column])
 
 
@@ -72,7 +96,6 @@ def add_identity(df: pd.DataFrame, series: pd.DataFrame,
     lookup = description_lookup(items)
     out = df.merge(series[["series_id", "item_code", "line", "output_type"]],
                    on="series_id", how="left")
-    out["description"] = out["item_code"].map(
-        lambda c: lookup.get(str(c)) or "")
+    out["description"] = out["item_code"].map(lambda c: describe(c, lookup))
     rest = [c for c in out.columns if c not in ID_COLS + ["series_id"]]
     return out[ID_COLS + rest]

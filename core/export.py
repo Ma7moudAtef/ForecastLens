@@ -6,11 +6,13 @@ produce byte-identical files from the same code — the Portfolio page and
 """
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pandas as pd
 
 from core import identity
+from core.export_guide import DICTIONARY_SHEET, guide_frame
 from core.paths import output_dir
 from core.store.repository import Repository
 
@@ -49,7 +51,8 @@ def build_frames(db_path: str | Path, run_id: str | None = None,
     if "series" in sheets:
         out = scoped.copy()
         out.insert(1, "description",
-                   out["item_code"].map(lambda c: lookup.get(str(c), "")))
+                   out["item_code"].map(
+                       lambda c: identity.describe(c, lookup)))
         frames["series"] = out.drop(columns=["series_id"])
     if "context" in sheets and not context.empty:
         # the operating-context finding for every exported series, including
@@ -59,15 +62,35 @@ def build_frames(db_path: str | Path, run_id: str | None = None,
             .drop(columns=["regime_counts_json"], errors="ignore"),
             series, items)
     if "warnings" in sheets:
-        frames["warnings"] = identity.expand_series_id(warnings, lookup)
+        expanded = identity.expand_series_id(warnings, lookup)
+        rest = [c for c in expanded.columns if c not in identity.ID_COLS]
+        frames["warnings"] = expanded[[*identity.ID_COLS, *rest]]
     return frames
+
+
+def with_dictionary(frames: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """The exported sheets with the data dictionary in front of them.
+
+    A planner opening the file lands on an explanation of every column before
+    they land on a number — which is the difference between a workbook they
+    can act on and one they have to ask about.
+    """
+    return {DICTIONARY_SHEET: guide_frame(frames), **frames}
+
+
+def workbook_bytes(frames: dict[str, pd.DataFrame]) -> bytes:
+    """The export as bytes. The browser download and the file the CLI writes
+    both go through here, so they cannot drift apart."""
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for name, frame in with_dictionary(frames).items():
+            frame.to_excel(writer, sheet_name=name[:31], index=False)
+    return buffer.getvalue()
 
 
 def write_workbook(frames: dict[str, pd.DataFrame], out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-        for name, frame in frames.items():
-            frame.to_excel(writer, sheet_name=name[:31], index=False)
+    out_path.write_bytes(workbook_bytes(frames))
     return out_path
 
 

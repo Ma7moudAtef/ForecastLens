@@ -10,13 +10,17 @@ _ROOT = str(Path(__file__).resolve().parents[2])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 # -----------------------------------------------------------------------------
-import io
-
 import pandas as pd
 import streamlit as st
 
 from app.components import badges, db, items as item_utils, ui
-from core.export import SHEETS as EXPORT_SHEETS, build_frames
+from core.export import (
+    SHEETS as EXPORT_SHEETS,
+    build_frames,
+    with_dictionary,
+    workbook_bytes,
+)
+from core.export_guide import SHEET_PURPOSE, tooltip
 
 st.title("📋 Portfolio & Export")
 
@@ -44,7 +48,7 @@ table = series.merge(
     on="series_id", how="left")
 table["recommendation"] = table["series_id"].map(badge).map(badges.badge_label)
 table["description"] = table["item_code"].map(
-    lambda c: desc_lookup.get(str(c), ""))
+    lambda c: item_utils.describe(c, desc_lookup))
 
 BADGE_HELP = {
     "ok": "Nothing to do — the forecast validated well and the data is sound.",
@@ -157,19 +161,20 @@ frames = build_frames(db.db_path(), run_id, series_ids=scoped_ids,
                       sheets=tuple(what))
 st.caption(f"{len(scoped_ids)} series in the export scope.")
 
-buffer = io.BytesIO()
-with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-    for name, df in frames.items():
-        df.to_excel(writer, sheet_name=name[:31], index=False)
+# Byte-for-byte the workbook core.export writes, data dictionary included —
+# the browser download and `ForecastLens --export` must not drift apart.
+workbook = workbook_bytes(frames)
 
 d1, d2 = st.columns(2)
 with d1:
     st.download_button(
-        "⬇️ Download Excel workbook", buffer.getvalue(),
+        "⬇️ Download Excel workbook", workbook,
         file_name="forecastlens_results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary",
-        help="One sheet per selection above, covering the items in scope.")
+        help="One sheet per selection above, covering the items in scope, "
+             "plus a data_dictionary sheet explaining every column and why "
+             "it is there.")
 with d2:
     if frames:
         pick = st.selectbox("Single table as CSV", list(frames),
@@ -178,3 +183,37 @@ with d2:
             "⬇️ Download CSV", frames[pick].to_csv(index=False).encode(),
             file_name=f"forecastlens_{pick}.csv", mime="text/csv",
             help="Comma-separated values, openable in Excel or any tool.")
+
+# --- preview before downloading -----------------------------------------------
+st.divider()
+ui.section("Look inside the workbook first",
+           "Exactly the sheets the download contains, in the same order. "
+           "Hover the ❓ on any column heading to see what it holds and why "
+           "you would use it — the same text the workbook's own "
+           "data_dictionary sheet carries.")
+
+PREVIEW_ROWS = 200
+previewed = with_dictionary(frames)
+if not previewed:
+    st.info("Choose at least one sheet above to preview it.")
+else:
+    for tab, name in zip(st.tabs([f"📄 {n}" for n in previewed]), previewed):
+        with tab:
+            frame = previewed[name]
+            purpose = SHEET_PURPOSE.get(name, "")
+            if purpose:
+                st.caption(purpose)
+            if frame.empty:
+                st.info("This sheet has no rows for the current scope.")
+                continue
+            shown = frame.head(PREVIEW_ROWS)
+            ui.table(
+                shown,
+                f"The '{name}' sheet of the download. Every column carries "
+                "its own ❓ explaining what it is and why you need it.",
+                column_help={c: tooltip(name, c) for c in frame.columns},
+                hide_index=True)
+            st.caption(
+                f"{len(frame):,} row(s) in the download"
+                + (f" — showing the first {PREVIEW_ROWS:,}."
+                   if len(frame) > PREVIEW_ROWS else "."))

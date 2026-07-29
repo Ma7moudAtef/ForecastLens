@@ -37,9 +37,24 @@ def chart(fig, help_text: str, key: str | None = None) -> None:
     st.plotly_chart(fig, width="stretch", key=key)
 
 
-def table(df, help_text: str, **kwargs) -> None:
-    """A dataframe with a hover explanation."""
+def table(df, help_text: str, column_help: dict[str, str] | None = None,
+          **kwargs) -> None:
+    """A dataframe with a hover explanation.
+
+    `column_help` puts a ❓ on individual column headers as well, so a reader
+    can ask what a single column means without hunting for a legend.
+    """
     left, right = st.columns([0.97, 0.03])
     with right:
         help_icon(help_text)
+    if column_help:
+        kwargs.setdefault("column_config", column_config(df, column_help))
     st.dataframe(df, width="stretch", **kwargs)
+
+
+def column_config(df, column_help: dict[str, str]) -> dict:
+    """Per-column ❓ tooltips for st.dataframe, for the columns that have
+    an explanation and are actually present."""
+    return {name: st.column_config.Column(name, help=text)
+            for name, text in column_help.items()
+            if text and name in getattr(df, "columns", [])}

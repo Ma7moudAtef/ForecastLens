@@ -17,6 +17,17 @@ import pandas as pd
 
 DIMENSIONS = ["item_code", "line", "output_type"]
 
+#: combined rate-scale interval bounds -> the atomic column each comes from.
+#: The atomic bounds are on the TARGET scale, which for a Relative series is
+#: the rate itself, so they combine the same way the rate does.
+_RATE_BAND_SOURCE = {
+    "rate_lower_80": "lower_80",
+    "rate_upper_80": "upper_80",
+    "rate_lower_95": "lower_95",
+    "rate_upper_95": "upper_95",
+}
+RATE_BAND_COLUMNS = tuple(_RATE_BAND_SOURCE)
+
 
 def _distinct_driver(df: pd.DataFrame, keys: list[str],
                      column: str) -> np.ndarray:
@@ -52,9 +63,14 @@ def aggregate_forecasts(forecasts: pd.DataFrame, series: pd.DataFrame,
                         filters: dict[str, list] | None = None) -> pd.DataFrame:
     """Group atomic forecasts. `group_dims` ⊆ {item_code, line, output_type};
     omitted dimensions are combined across. Demand and driver are summed;
-    the combined rate is Σdemand/Σdriver. Interval bounds are summed — an
-    approximation that ignores cross-series error correlation, and is
-    labelled as such in the UI."""
+    the combined rate is the driver-weighted mean of the member rates.
+
+    Interval bounds are carried through the SAME operator as the value they
+    bracket: demand bounds are summed like demand, rate bounds are
+    driver-weighted like the rate. Both assume the members' errors move
+    together, which widens the band rather than narrowing it, and both are
+    labelled as approximations in the UI.
+    """
     bad = set(group_dims) - set(DIMENSIONS)
     if bad:
         raise ValueError(f"unknown dimensions: {bad}")
@@ -62,7 +78,7 @@ def aggregate_forecasts(forecasts: pd.DataFrame, series: pd.DataFrame,
     df = _filter(df, filters)
     if df.empty:
         return pd.DataFrame(columns=["period", *group_dims, "demand",
-                                     "driver_plan", "rate"])
+                                     "driver_plan", "rate", *RATE_BAND_COLUMNS])
     df = df.copy()
     # Numerator/denominator of the driver-weighted mean rate. Both sum over
     # the same series-periods, so a driver shared by many items inflates
@@ -70,6 +86,11 @@ def aggregate_forecasts(forecasts: pd.DataFrame, series: pd.DataFrame,
     # unrelated totals.
     df["_rate_x_driver"] = df["target_value"] * df["driver_plan"]
     df["_rate_weight"] = df["driver_plan"].where(df["target_value"].notna())
+    # each bound is a rate in its own right, so it is weighted exactly like
+    # the point rate — the band then brackets the combined point estimate for
+    # the same reason each member bound brackets its own
+    for bound, source in _RATE_BAND_SOURCE.items():
+        df[f"_{bound}_x_driver"] = df[source] * df["_rate_weight"]
     keys = ["period", *group_dims]
     agg = (df.groupby(keys, dropna=False)
            .agg(demand=("reconstructed_demand", "sum"),
@@ -80,14 +101,20 @@ def aggregate_forecasts(forecasts: pd.DataFrame, series: pd.DataFrame,
                 rate_weighted_numerator=("_rate_x_driver", "sum"),
                 rate_weight=("_rate_weight", "sum"),
                 n_series=("series_id", "nunique"),
-                confidence=("confidence", "mean"))
+                confidence=("confidence", "mean"),
+                **{f"_{b}_sum": (f"_{b}_x_driver", "sum")
+                   for b in _RATE_BAND_SOURCE})
            .reset_index())
     with np.errstate(divide="ignore", invalid="ignore"):
+        usable = agg["rate_weight"] > 0
         agg["rate"] = np.where(
-            agg["rate_weight"] > 0,
-            agg["rate_weighted_numerator"] / agg["rate_weight"], np.nan)
+            usable, agg["rate_weighted_numerator"] / agg["rate_weight"], np.nan)
+        for bound in _RATE_BAND_SOURCE:
+            agg[bound] = np.where(
+                usable, agg[f"_{bound}_sum"] / agg["rate_weight"], np.nan)
     agg["driver_plan"] = _distinct_driver(df, keys, "driver_plan")
-    return agg.drop(columns=["rate_weighted_numerator", "rate_weight"])
+    return agg.drop(columns=["rate_weighted_numerator", "rate_weight",
+                             *(f"_{b}_sum" for b in _RATE_BAND_SOURCE)])
 
 
 def aggregate_observations(observations: pd.DataFrame, series: pd.DataFrame,

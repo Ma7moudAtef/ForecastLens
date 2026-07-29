@@ -164,9 +164,16 @@ while working.
    spend your attention: data-quality issues first, then structural changes,
    declining accuracy, manual reviews. Everything else is "automatic OK".
    The same page exports the results: the filtered table as CSV, or the full
-   Excel workbook (forecasts, selections, series profiles, warnings). Every
-   exported row carries item code, description, line and output type as
-   separate columns.
+   Excel workbook (forecasts, selections, series profiles, operating context,
+   warnings). Every exported row carries item code, description, line and
+   output type as separate columns.
+   - **Look inside before you download.** Below the download buttons every
+     sheet of the workbook is shown exactly as it will be exported, one tab
+     each. Hover the ❓ on any column heading to see what it holds and why you
+     would use it.
+   - The workbook's **first sheet is a `data_dictionary`** carrying that same
+     explanation for every column of every sheet, so the file explains itself
+     to whoever you send it to.
 
 ## Reading a forecast
 
@@ -236,3 +243,26 @@ you why on the card.
 
 If your data has one line and one output type there is nothing here to learn,
 and the whole layer switches itself off without changing a single number.
+
+## Items that are not in your bom sheet
+
+An item can appear in `consumption` without having a row in `bom`. When that
+happens the engine has no name and no category for it, so:
+
+- every table and every exported sheet shows **`(not in bom)`** where the
+  description would be — never a blank cell, because a blank looks like the
+  app lost something rather than like your master data is incomplete;
+- a cold-start series for that item cannot borrow behaviour from category
+  siblings and falls further down the fallback ladder;
+- the Data page reports the count under **ITEM_NOT_IN_BOM**.
+
+Its consumption history is still real, so **by default the item is still
+forecast**. If your rule is "if it is not in the master data it does not
+exist", switch on **Only items listed in the bom sheet** on Configure & Run
+(or pass `--bom-items-only` to the CLI) and those items are left out of the
+run entirely.
+
+Check the count before you do. On the bundled sample workbook the bom sheet
+covers `code1`–`code138` while consumption runs to `code259`, so the switch
+would drop **121 of 248 items** — every Absolute-mode material in the file.
+The fix that loses nothing is to complete the bom sheet.

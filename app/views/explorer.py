@@ -90,7 +90,7 @@ else:
 if len(matched) == 1:
     row = matched.iloc[0]
     sid = row["series_id"]
-    description = desc_lookup.get(str(row["item_code"]), "")
+    description = item_utils.describe(row["item_code"], desc_lookup)
     sel = selections[selections["series_id"] == sid]
     obs = observations[observations["series_id"] == sid].sort_values("period")
     fc = forecasts[forecasts["series_id"] == sid].sort_values("period")
@@ -366,9 +366,17 @@ else:
                 "plan covers them, so no combined rate can be formed. Series "
                 "whose history ends early forecast into periods your plan "
                 "does not reach.")
+        # each interval bound is itself a rate, driver-weighted exactly like
+        # the point estimate — so the combined band is on the same scale as
+        # the combined line and brackets it
         fig = charts.series_chart(
             g_obs.rename(columns={"rate": "value"}).sort_values("period"),
-            rated.rename(columns={"rate": "value"}).sort_values("period"),
+            rated.rename(columns={"rate": "value",
+                                  "rate_lower_80": "lower_80",
+                                  "rate_upper_80": "upper_80",
+                                  "rate_lower_95": "lower_95",
+                                  "rate_upper_95": "upper_95"})
+                 .sort_values("period"),
             "value", "value",
             driver=(g_obs[["period", "driver_qty"]].dropna()
                     if "driver_qty" in g_obs.columns else None),
@@ -378,10 +386,12 @@ else:
             "cons_rate in your data. Each period's rate is weighted by the "
             "production it was consumed against — a driver-weighted average, "
             "never a plain average of rates. History and forecast are "
-            "calculated the same way, so they are directly comparable. Grey "
-            "dotted line is the production itself, counted once per line "
-            "rather than once per item. Prediction bands are not shown: "
-            "summed bounds do not divide into a meaningful rate interval.")
+            "calculated the same way, so they are directly comparable. "
+            "Shaded bands are the 80% and 95% ranges, each bound weighted by "
+            "production just like the rate itself; they assume the items' "
+            "errors move together, which makes the band wider than it would "
+            "be if they cancelled. Grey dotted line is the production itself, "
+            "counted once per line rather than once per item.")
     else:
         fig = charts.series_chart(
             g_obs.rename(columns={"qty_base": "value"}).sort_values("period"),
@@ -399,8 +409,13 @@ else:
             "individual errors move together.")
     ui.chart(fig, chart_help)
 
-    value_cols = (["rate", "demand", "driver_plan"] if is_relative_view
-                  else ["demand", "driver_plan", "rate"])
+    # the ranges belong in the table too — a chart you cannot read a number
+    # off is not a substitute for the number
+    value_cols = (["rate", "rate_lower_80", "rate_upper_80", "rate_lower_95",
+                   "rate_upper_95", "demand", "driver_plan"]
+                  if is_relative_view else
+                  ["demand", "demand_lower_80", "demand_upper_80",
+                   "demand_lower_95", "demand_upper_95", "driver_plan", "rate"])
     cols = ["period"] + [c for c in value_cols + ["n_series", "confidence"]
                          if c in g_fc.columns]
     ui.table(g_fc[cols],
@@ -409,5 +424,32 @@ else:
              "production for the period, counted once per line rather than "
              "once per item. rate = the driver-weighted average of the "
              "member rates, in your data's own cons_rate units — never a "
-             "plain average. n_series = how many item/line/output "
-             "combinations are behind the row.", hide_index=True)
+             "plain average. The _80 and _95 columns are the ranges around "
+             "it, weighted the same way. n_series = how many "
+             "item/line/output combinations are behind the row.",
+             column_help={
+                 "period": "The future period this row forecasts.",
+                 "rate": "Driver-weighted average consumption rate for the "
+                         "whole selection — each member weighted by the "
+                         "production it is consumed against.",
+                 "rate_lower_80": "Bottom of the 80% range for the combined "
+                                  "rate.",
+                 "rate_upper_80": "Top of the 80% range — the everyday "
+                                  "planning ceiling.",
+                 "rate_lower_95": "Bottom of the 95% range.",
+                 "rate_upper_95": "Top of the 95% range — the safety-stock "
+                                  "level for a critical material.",
+                 "demand": "Consumption in units: every member's forecast "
+                           "demand added together.",
+                 "demand_lower_80": "Bottom of the 80% range for demand.",
+                 "demand_upper_80": "Top of the 80% range for demand.",
+                 "demand_lower_95": "Bottom of the 95% range for demand.",
+                 "demand_upper_95": "Top of the 95% range for demand.",
+                 "driver_plan": "Your planned production for the period, "
+                                "counted once per line rather than once per "
+                                "item that runs on it.",
+                 "n_series": "How many item/line/output combinations are "
+                             "behind this row.",
+                 "confidence": "Average trust score of the members, 0 to 1.",
+             },
+             hide_index=True)

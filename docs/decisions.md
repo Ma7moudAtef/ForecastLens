@@ -227,3 +227,66 @@ tracks total plant activity, and the production plan for the horizon averages
 went up because the plan says the plant will be busier. Relative-mode demand
 barely moved (174.8 → 173.8), which is what you would expect — a rate does
 not care how much runs.
+
+## D12 — A description column is never blank
+
+An item consumed but absent from the `bom` sheet has no name. Showing an
+empty cell for it is the wrong answer twice over: it reads as "the app lost
+something", and it hides a gap in the master data that the planner can
+actually fix. Every user-facing table routes through `identity.describe()`,
+which returns one of exactly three things:
+
+- the real description, when the bom sheet has one;
+- `(not in bom)`, when the item is consumed but has no bom row;
+- `(not item-specific)`, when the row is not about a single item at all — a
+  validation warning covering the whole dataset, say.
+
+The two markers are deliberately different. Conflating them would report a
+dataset-level warning as a missing item.
+
+`rule_items_missing_from_bom` is a WARNING rather than INFO for the same
+reason: it was quiet enough to be discovered only in a downloaded workbook,
+which is the worst place to discover it.
+
+### Why such items are still forecast by default
+
+The strict reading — "not in the master data means it does not exist" — is a
+defensible governance rule, and `scope.bom_items_only` implements it
+(**Only items listed in the bom sheet** on Configure & Run, `--bom-items-only`
+on the CLI). It is **off by default**, because the item's consumption history
+is real and forecastable; what is missing is its name and its category, not
+its demand.
+
+The sample workbook shows why this must be the planner's choice and not the
+engine's: `bom` covers `code1`–`code138`, `consumption` runs to `code259`, and
+the 121 items in between are **exactly the 121 Absolute-mode materials**.
+Turning the rule on by default would silently delete every Absolute forecast
+in the file.
+
+## D13 — The results workbook explains itself
+
+`core/export_guide.py` holds one description per exported column — what it is
+and why a planner needs it — and feeds two places from it: the
+`data_dictionary` sheet written as the FIRST sheet of the download, and the
+per-column ❓ tooltips in the Portfolio preview. `tests/unit/test_export_guide.py`
+fails the build if an export sheet grows a column with no entry, because an
+undocumented column in a file someone plans against is a defect.
+
+The browser download and `ForecastLens --export` both go through
+`export.workbook_bytes()`. The Portfolio page previously assembled its own
+`ExcelWriter`, which is how the two could have drifted apart — the dictionary
+sheet would have been in one and not the other.
+
+## D14 — A combined Relative view shows its intervals
+
+The combined view charts the driver-weighted mean of the member rates. Its
+80% and 95% bounds are that same weighted mean applied to each member's own
+rate bounds — not the summed demand bounds divided by something, which is
+what an earlier note dismissed as meaningless (correctly).
+
+Because the weights are non-negative and each member bound brackets its own
+point estimate, the combined band brackets the combined point estimate. Like
+the summed demand bounds, it assumes the members' errors move together, which
+makes the band wider rather than narrower. A point estimate with no interval
+looks exactly as certain as a single well-behaved series, which is the one
+thing an aggregate never is.

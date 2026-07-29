@@ -449,6 +449,20 @@ def run_forecast(input_path: str | Path, cfg: EngineConfig | None = None,
                  "but will not be forecast")
         else:
             emit(f"Scope: all {len(contexts)} series")
+        if cfg.scope.bom_items_only:
+            known = set(raw.items["item_code"].dropna().astype(str))
+            listed = set(analyzed.loc[
+                analyzed["item_code"].astype(str).isin(known), "series_id"])
+            removed = [c for c in contexts if c.series_id not in listed]
+            contexts = [c for c in contexts if c.series_id in listed]
+            if not contexts:
+                raise RuntimeError(
+                    "'bom-listed items only' is on and not one item in scope "
+                    "appears in the bom sheet, so there is nothing to "
+                    "forecast. Add the items to bom or switch the option off.")
+            if removed:
+                emit(f"Excluded {len(removed)} series whose item has no bom "
+                     "row — 'bom-listed items only' is on")
         if model_overrides:
             emit(f"Respecting {len(model_overrides)} locked model "
                  "override(s)")

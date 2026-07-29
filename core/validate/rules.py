@@ -231,12 +231,17 @@ def rule_items_missing_from_bom(raw: RawTables, cfg: EngineConfig) -> list[Valid
     if not missing:
         return []
     preview = ", ".join(missing[:8]) + ("…" if len(missing) > 8 else "")
+    share = len(missing) / max(len(used), 1)
     return [ValidationWarning(
-        code="ITEM_NOT_IN_BOM", severity=Severity.INFO, count=len(missing),
-        message=(f"{len(missing)} item(s) consumed but absent from the bom sheet "
-                 f"({preview}). No category information: cold-start series for these "
-                 "items cannot use a category prior and fall back further down the "
-                 "ladder."))]
+        code="ITEM_NOT_IN_BOM", severity=Severity.WARNING, count=len(missing),
+        message=(f"{len(missing)} of {len(used)} consumed item(s) ({share:.0%}) "
+                 f"are absent from the bom sheet ({preview}). They have NO "
+                 "description, so every table and export shows "
+                 "'(not in bom)' where a name should be, and no category "
+                 "information, so a cold-start series cannot borrow from "
+                 "category siblings. Add them to the bom sheet, or switch on "
+                 "'Only items listed in the bom' on Configure & Run to leave "
+                 "them out of the forecast entirely."))]
 
 
 def rule_mixed_mode_series(raw: RawTables, cfg: EngineConfig) -> list[ValidationWarning]:

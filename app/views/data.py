@@ -238,7 +238,8 @@ with tabs[0]:
         show = orphans[["item_code", "line", "output_type", "mode",
                         "n_observed"]].copy()
         show.insert(1, "description",
-                    show["item_code"].map(lambda c: desc_lookup.get(str(c), "")))
+                    show["item_code"].map(
+                        lambda c: item_utils.describe(c, desc_lookup)))
         ui.table(show, "Every orphan series, shown by item code and "
                        "description with its line and output type.",
                  hide_index=True)
@@ -404,7 +405,8 @@ with tabs[7]:
     if not existing.empty:
         shown = existing.copy()
         shown.insert(1, "description",
-                     shown["item_code"].map(lambda c: desc_lookup.get(str(c), "")))
+                     shown["item_code"].map(
+                         lambda c: item_utils.describe(c, desc_lookup)))
         ui.table(shown, "Declarations currently in force.", hide_index=True)
         clear_labels = item_utils.build_labels(existing["item_code"], desc_lookup)
         clear_pick = st.selectbox(

@@ -139,3 +139,59 @@ def test_run_number_backfills_on_an_older_database(tmp_path):
         new_id = repo.create_run("{}", scope_note="all items")
         runs = repo.list_runs()
     assert dict(zip(runs["run_id"], runs["run_number"]))[new_id] == 2
+
+
+def _items_outside_bom(n: int) -> list[str]:
+    bom = pd.read_excel(FIXTURE, sheet_name="bom", engine="openpyxl")
+    consumption = pd.read_excel(FIXTURE, sheet_name="consumption",
+                                engine="openpyxl")
+    outside = sorted(set(consumption["item_code"].dropna())
+                     - set(bom["item_code"].dropna()))
+    return outside[:n]
+
+
+def test_bom_items_only_excludes_items_with_no_master_data(tmp_path):
+    """The strict reading of 'if it is not in the bom it does not exist'.
+    Opt-in, because on a real workbook it can remove a lot."""
+    inside, outside = _items(1), _items_outside_bom(1)
+    assert outside, "the fixture no longer exercises this case"
+
+    cfg = EngineConfig(scope={"item_codes": inside + outside,
+                              "bom_items_only": True},
+                       forecast={"horizon": 2})
+    db = tmp_path / "strict.db"
+    run_id = run_forecast(FIXTURE, cfg, db_path=db)
+
+    with Repository(db) as repo:
+        selections = repo.get_selections(run_id)
+        runs = repo.list_runs()
+
+    forecast_items = {s.split("|")[0] for s in selections["series_id"]}
+    assert forecast_items == set(inside)
+    assert not forecast_items & set(outside)
+    assert "bom-listed" in runs.iloc[0]["scope_note"]
+
+
+def test_the_same_items_are_forecast_by_default(tmp_path):
+    """Without the switch, an item missing from bom still has real history
+    and is still forecast — it just has no description."""
+    inside, outside = _items(1), _items_outside_bom(1)
+    cfg = EngineConfig(scope={"item_codes": inside + outside},
+                       forecast={"horizon": 2})
+    db = tmp_path / "default.db"
+    run_id = run_forecast(FIXTURE, cfg, db_path=db)
+
+    with Repository(db) as repo:
+        selections = repo.get_selections(run_id)
+
+    forecast_items = {s.split("|")[0] for s in selections["series_id"]}
+    assert forecast_items == set(inside + outside)
+
+
+def test_a_strict_run_with_nothing_left_fails_loudly(tmp_path):
+    """Silently forecasting nothing would look like a working empty run."""
+    outside = _items_outside_bom(1)
+    cfg = EngineConfig(scope={"item_codes": outside, "bom_items_only": True},
+                       forecast={"horizon": 2})
+    with pytest.raises(RuntimeError, match="bom-listed items only"):
+        run_forecast(FIXTURE, cfg, db_path=tmp_path / "empty.db")

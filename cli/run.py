@@ -31,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--derive-rates", action="store_true",
                         help="for items with no cons_rate but with driver "
                              "data, derive rate = consumption / driver")
+    parser.add_argument("--bom-items-only", action="store_true",
+                        help="forecast only items that have a row in the bom "
+                             "sheet. Items without one have no description "
+                             "and no category; by default they are still "
+                             "forecast from their own history.")
     parser.add_argument("--no-context", action="store_true",
                         help="do not let the context-aware models compete. "
                              "Items are still tested and the finding is "
@@ -54,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.items:
         cfg.scope.item_codes = [c.strip() for c in args.items.split(",")
                                 if c.strip()]
+    if args.bom_items_only:
+        cfg.scope.bom_items_only = True
     if args.derive_rates:
         cfg.rate.derive_missing = True
     if args.no_context:

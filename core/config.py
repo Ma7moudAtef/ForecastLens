@@ -174,11 +174,25 @@ class RunScope(BaseModel):
     """
 
     item_codes: list[str] = Field(default_factory=list)
+    #: forecast only items that have a row in the bom sheet. Off by default:
+    #: an item missing from bom still has real consumption history and is
+    #: still forecastable — it just has no description and no category to
+    #: borrow from. Turning this on is a data-governance choice ("if it is
+    #: not in the master data it does not exist"), and it can remove a large
+    #: part of a catalogue, so the planner makes it deliberately.
+    bom_items_only: bool = False
 
     def covers_all(self) -> bool:
         return not self.item_codes
 
     def note(self) -> str:
+        if self.bom_items_only:
+            listed = "bom-listed items only"
+            return listed if self.covers_all() else \
+                f"{self._selection_note()}, {listed}"
+        return self._selection_note()
+
+    def _selection_note(self) -> str:
         if self.covers_all():
             return "all items"
         if len(self.item_codes) == 1:
