@@ -61,16 +61,24 @@ def test_forecasts_nonnegative_and_intervals_ordered(run):
     assert (demand >= 0).all()
 
 
-def test_orphan_series_excluded_from_reconstruction_but_not_deleted(run):
+def test_orphan_series_is_forecast_on_quantity_and_never_deleted(run):
+    """Its rate has no denominator in any period, so the quantity is forecast
+    directly — a usable answer where a rate against nothing is not. The
+    series is still flagged, and nothing is guessed or removed."""
     with Repository(run["db"]) as repo:
         fc = repo.get_forecasts(run["run_id"], ["code136|a|C"])
         series = repo.get_series()
     orphan = series[series["series_id"] == "code136|a|C"]
     assert len(orphan) == 1
-    assert orphan.iloc[0]["mode"] == "relative"       # never flipped
+    assert orphan.iloc[0]["mode"] == "absolute"
+    assert orphan.iloc[0]["mode_source"] == "no_driver"
     assert orphan.iloc[0]["is_orphan"] == 1
-    assert len(fc) > 0                                # forecast exists (rate)
-    assert fc["reconstructed_demand"].isna().all()    # demand never guessed
+    assert len(fc) > 0
+    # an Absolute forecast reconstructs demand from the calendar, not from a
+    # driver plan, so a real quantity comes out and no denominator is invented
+    assert fc["reconstructed_demand"].notna().all()
+    assert (fc["reconstructed_demand"] >= 0).all()
+    assert fc["driver_plan"].isna().all()
 
 
 def test_routed_series_have_intermittent_family_winners(run):

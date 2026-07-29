@@ -37,6 +37,25 @@ Fill in **future** periods too. The engine only uses a factor it can read for
 the periods it is forecasting — a promotion you record only in history is
 history, not a forecasting input.
 
+## When a consumption rate has nothing to divide by
+
+An item can carry a `cons_rate` for a line and output type that **never
+appears in the `prod` sheet at all**. That is not a gap in the history — the
+denominator does not exist, and no amount of extra history will create it. A
+rate forecast for such a series could never be turned into a quantity, so the
+engine sets the rate aside and forecasts its **consumption quantity directly**
+(Absolute mode). Its `mode_source` reads `no_driver`, the Data page lists it,
+and the validation report explains it.
+
+Nothing is guessed and nothing is deleted. Add production rows for that line
+and output and the series goes back to being forecast as a rate on the next
+run — the mode is worked out from your current data every time.
+
+This applies only when the combination is missing **entirely**. A material
+whose production data has a few missing months keeps its mode: those are
+ordinary data gaps, excluded from fitting and flagged, never a reason to
+change what a material fundamentally is.
+
 ## Periods when the line did not run
 
 If a material has no consumption rate in a period **and** there was no

@@ -116,9 +116,10 @@ def _driver_combos(raw: RawTables) -> set[tuple]:
 
 def rule_orphan_series(raw: RawTables, cfg: EngineConfig) -> list[ValidationWarning]:
     """A series with a consumption rate whose (line, output_type) never appears
-    in the driver table. This is not a gap — the denominator does not exist.
-    The series is kept, stays Relative, and is excluded from reconstruction
-    until the planner resolves it. We never guess a denominator."""
+    in the driver table. This is not a gap — the denominator does not exist,
+    and no amount of extra history will make it exist. The series is kept and
+    resolved ABSOLUTE, so its quantity is forecast directly instead of a rate
+    against nothing. We never guess a denominator and never delete a series."""
     out = []
     combos = _driver_combos(raw)
     if not combos:
@@ -132,10 +133,11 @@ def rule_orphan_series(raw: RawTables, cfg: EngineConfig) -> list[ValidationWarn
                 message=(f"Series {(_key_kwargs(key)['item_code'], str(line), str(output))} "
                          f"has a consumption rate, but no driver record exists for "
                          f"output_type '{output}' on line '{line}' in ANY period — the "
-                         "denominator does not exist. The series stays Relative and is "
-                         "excluded from demand reconstruction until a driver is provided "
-                         "or the planner declares it Absolute. No denominator is guessed; "
-                         "the series is not deleted."),
+                         "denominator does not exist. The rate has been set aside and the "
+                         "series is forecast ABSOLUTE, on its consumption quantity, which "
+                         "is a usable answer where a rate against nothing is not. Add "
+                         "driver rows for the combination and it returns to Relative on "
+                         "the next run. No denominator is guessed; nothing is deleted."),
                 **_key_kwargs(key)))
     return out
 

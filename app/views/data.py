@@ -227,21 +227,25 @@ with tabs[0]:
 
     orphans = analyzed[analyzed["is_orphan"] == 1]
     if not orphans.empty:
-        st.error(
-            f"**{len(orphans)} orphan series need your decision.** These have "
-            "a consumption rate but no driver record exists for their (line, "
-            "output) in any period — the denominator does not exist. They "
-            "stay Relative and are excluded from demand reconstruction; no "
-            "denominator is guessed and nothing is deleted. Either add driver "
-            "rows for the combination in the **prod** tab, or declare the "
-            "item Absolute in the **Item modes** tab.")
+        st.warning(
+            f"**{len(orphans)} series carry a consumption rate with nothing "
+            "to divide it by.** No production record exists for their (line, "
+            "output) in ANY period, so the denominator does not exist and no "
+            "amount of extra history will create it. Their rate has been set "
+            "aside and they are forecast **Absolute**, on consumption "
+            "quantity — a usable answer where a rate against nothing is not. "
+            "Nothing is guessed and nothing is deleted. Add production rows "
+            "for the combination in the **prod** tab and they go back to "
+            "being forecast as a rate on the next run.")
         show = orphans[["item_code", "line", "output_type", "mode",
-                        "n_observed"]].copy()
+                        "mode_source", "n_observed"]].copy()
         show.insert(1, "description",
                     show["item_code"].map(
                         lambda c: item_utils.describe(c, desc_lookup)))
-        ui.table(show, "Every orphan series, shown by item code and "
-                       "description with its line and output type.",
+        ui.table(show, "Every series whose rate has no denominator, shown by "
+                       "item code and description with its line and output "
+                       "type. mode_source 'no_driver' is the reason it is "
+                       "being forecast as a quantity.",
                  hide_index=True)
 
 # --- validation ---------------------------------------------------------------

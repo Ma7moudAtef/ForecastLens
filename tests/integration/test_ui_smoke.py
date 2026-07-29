@@ -515,7 +515,8 @@ def test_configure_run_offers_the_context_controls():
     boxes = {c.label for c in at.checkbox}
     assert "Use operating context" in boxes
     sliders = {s.label for s in at.slider}
-    assert "Minimum context effect to act on" in sliders
+    assert any(s.startswith("Minimum context effect to act on")
+               for s in sliders), sliders
 
 
 def test_portfolio_previews_every_export_sheet_with_column_help():
@@ -629,3 +630,49 @@ def test_combined_relative_view_shows_its_prediction_ranges():
     assert (rated["rate_lower_80"] <= rated["rate"]).all()
     assert (rated["rate"] <= rated["rate_upper_80"]).all()
     assert (rated["rate_upper_80"] <= rated["rate_upper_95"]).all()
+
+
+def test_the_slider_shows_context_materiality_to_two_decimals():
+    """It carried a 0-0.5 fraction with a "%.0f%%" format, so Streamlit
+    rendered every position as "0%". It now carries percent directly."""
+    at = AppTest.from_file(str(APP / "views" / "configure_run.py"),
+                           default_timeout=180).run()
+    assert not at.exception
+
+    slider = next(s for s in at.slider
+                  if s.label.startswith("Minimum context effect"))
+    assert slider.max > 1.0, "still on a 0-1 fraction scale"
+    assert slider.value == pytest.approx(10.0)      # 10%, the default
+    # distinct labels along the way, all to two decimals
+    rendered = {f"{slider.min:.2f}%", f"{slider.value:.2f}%",
+                f"{slider.max:.2f}%"}
+    assert rendered == {"0.00%", "10.00%", "50.00%"}
+
+
+def test_the_orphan_is_forecast_on_quantity_and_says_so():
+    """A rate with no denominator anywhere: the app must explain that the
+    quantity is being forecast instead, not that demand is unavailable."""
+    from app.components import db as app_db
+
+    series = app_db.load_series(app_db.stamp())
+    items = app_db.load_items(app_db.stamp())
+    orphans = series[series["is_orphan"] == 1]
+    if orphans.empty:
+        pytest.skip("the fixture no longer contains an orphan series")
+    row = orphans.iloc[0]
+    desc = items.set_index("item_code")["description"].get(row["item_code"], "")
+
+    at = AppTest.from_file(str(APP / "views" / "explorer.py"),
+                           default_timeout=300).run()
+    at.multiselect[0].set_value([f"{desc} — {row['item_code']}"])
+    at.multiselect[1].set_value([row["line"]])
+    at.multiselect[2].set_value([row["output_type"]])
+    at.run()
+    assert not at.exception
+
+    assert row["mode"] == "absolute"
+    notes = " ".join(w.value for w in at.warning)
+    assert "no production record" in notes
+    assert "quantity" in notes
+    # and it is not presented as a dead end
+    assert "goes back to being forecast as a rate" in notes

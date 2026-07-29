@@ -55,7 +55,8 @@ def test_orphan_series_detected_and_named():
     assert w.code == "ORPHAN_SERIES"
     assert w.item_code == "A1" and w.output_type == "C"
     assert "denominator does not exist" in w.message
-    assert "not deleted" in w.message
+    assert "forecast ABSOLUTE" in w.message
+    assert "nothing is deleted" in w.message
 
 
 def test_orphan_not_raised_when_combo_exists():

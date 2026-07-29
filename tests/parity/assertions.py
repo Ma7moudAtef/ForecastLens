@@ -13,8 +13,8 @@ from core.store.repository import Repository
 
 #: reference facts for tests/fixtures/sample_public.xlsx
 EXPECTED_SERIES = 820
-EXPECTED_ABSOLUTE_ITEMS = 121
-EXPECTED_RELATIVE_ITEMS = 127
+EXPECTED_ABSOLUTE_ITEMS = 122
+EXPECTED_RELATIVE_ITEMS = 126
 EXPECTED_ORPHANS = 1
 ORPHAN_SERIES_ID = "code136|a|C"
 
@@ -43,10 +43,13 @@ def assert_mode_split(series: pd.DataFrame) -> None:
 
 
 def assert_orphans(series: pd.DataFrame) -> None:
+    """The rate with no denominator anywhere: still flagged, and forecast on
+    its quantity because a rate against nothing cannot be reconstructed."""
     orphans = series[series["is_orphan"] == 1]
     assert len(orphans) == EXPECTED_ORPHANS, len(orphans)
     assert orphans.iloc[0]["series_id"] == ORPHAN_SERIES_ID
-    assert orphans.iloc[0]["mode"] == "relative"
+    assert orphans.iloc[0]["mode"] == "absolute"
+    assert orphans.iloc[0]["mode_source"] == "no_driver"
 
 
 def assert_run_completed(db_path: Path, run_id: str) -> pd.DataFrame:

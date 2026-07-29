@@ -183,9 +183,13 @@ with st.form("config"):
                  "does. Items are tested either way; this only controls "
                  "whether those models may compete. On a single-line "
                  "dataset it does nothing at all.")
-        context_materiality = st.slider(
-            "Minimum context effect to act on", 0.0, 0.50, 0.10, 0.05,
-            format="%.0f%%",
+        # The slider carries PERCENT, not a fraction: Streamlit's format
+        # string is applied to the raw value, so a 0-0.5 fraction rendered
+        # every position as "0%". Converted back to a fraction below.
+        context_materiality_pct = st.slider(
+            "Minimum context effect to act on (%)",
+            min_value=0.00, max_value=50.00, value=10.00, step=0.25,
+            format="%.2f%%",
             help="How much operating conditions must change an item's "
                  "consumption before a context-aware model is allowed to "
                  "compete for it. Statistical significance alone is not "
@@ -228,7 +232,7 @@ if submitted:
                   "seasonal_min_history": int(seasonal_min)},
             rate={"derive_missing": derive_rates},
             context={"enabled": context_enabled,
-                     "materiality": float(context_materiality)},
+                     "materiality": context_materiality_pct / 100.0},
             models={"lookback_windows": window_sweep(w_short, w_long),
                     "disabled_models": disabled},
             fast_mode=fast_mode,

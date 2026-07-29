@@ -81,17 +81,22 @@ def build_series(raw: RawTables, cfg: EngineConfig,
         sid = series_id_of(item, line, output)
 
         has_rate = grp["rate"].notna().any()
+        driver_exists = (line, output) in combos
         # Rule 2: a rate can be derived only when the planner asked for it AND
         # this series' (line, output) actually has driver data to divide by.
-        can_derive = (cfg.rate.derive_missing and not has_rate
-                      and (line, output) in combos)
+        can_derive = cfg.rate.derive_missing and not has_rate and driver_exists
         mode, mode_source = resolve_mode(
             has_rate,
             declared_bom=_norm(declared_bom.get(item)),
             declared_ui=mode_overrides.get(item),
             can_derive_rate=can_derive,
+            driver_exists=driver_exists,
         )
         derived_rate = mode is Mode.RELATIVE and not has_rate
+        # A rate with no denominator anywhere. Recorded even though the mode
+        # has been resolved Absolute, because the planner still needs to know
+        # their rate was set aside and why.
+        is_orphan = has_rate and not driver_exists
 
         # -- aggregate duplicates to one row per period ----------------------
         agg = grp.groupby("period").agg(
@@ -111,11 +116,9 @@ def build_series(raw: RawTables, cfg: EngineConfig,
             obs["rate"] = obs["rate"].fillna(0.0)
 
         # -- driver join (relative only; absolute ignores the driver) --------
-        is_orphan = False
         if mode is Mode.RELATIVE:
             obs["driver_qty"] = [
                 actual_lookup.get((p, line, output), np.nan) for p in periods]
-            is_orphan = (line, output) not in combos
         else:
             obs["driver_qty"] = np.nan
 

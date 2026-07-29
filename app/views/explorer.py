@@ -107,11 +107,15 @@ if len(matched) == 1:
                help="The product/output this forecast is for.")
 
     if row["is_orphan"]:
-        st.error("This item has a consumption rate but no driver record for "
-                 "its line and output in any period — the denominator does "
-                 "not exist. The rate forecast below stands; demand in units "
-                 "cannot be reconstructed until driver data is added or the "
-                 "item is declared Absolute on the Data page.")
+        st.warning("This item has a consumption rate but **no production "
+                   "record for its line and output in any period** — the "
+                   "denominator does not exist, and more history will not "
+                   "create it. The rate has been set aside and the "
+                   "consumption **quantity** is forecast directly below, "
+                   "which is a usable answer where a rate against nothing is "
+                   "not. Add production rows for the combination on the Data "
+                   "page and it goes back to being forecast as a rate on the "
+                   "next run.")
 
     is_relative = row["mode"] == "relative"
     std_rates = db.load_standard_rates(db.stamp())

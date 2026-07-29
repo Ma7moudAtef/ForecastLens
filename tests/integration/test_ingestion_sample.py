@@ -41,6 +41,7 @@ def test_exactly_one_orphan_series_detected(warnings):
     w = orphans[0]
     assert (w.item_code, w.line, w.output_type) == ("code136", "a", "C")
     assert "denominator does not exist" in w.message
+    assert "forecast ABSOLUTE" in w.message
 
 
 def test_zero_partial_orphans(warnings):

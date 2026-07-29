@@ -157,6 +157,25 @@ def test_resolve_mode_precedence():
         (Mode.RELATIVE, ModeSource.INFERRED)
 
 
+def test_a_rate_with_no_driver_at_all_resolves_absolute():
+    """Not a data gap — the denominator does not exist for this combination
+    in any period, so there is nothing for the rate to be relative TO."""
+    assert resolve_mode(True, driver_exists=False) == \
+        (Mode.ABSOLUTE, ModeSource.NO_DRIVER)
+    # a declaration still wins
+    assert resolve_mode(True, declared_ui="relative", driver_exists=False) == \
+        (Mode.RELATIVE, ModeSource.DECLARED_UI)
+    assert resolve_mode(True, declared_bom="relative", driver_exists=False) == \
+        (Mode.RELATIVE, ModeSource.DECLARED_BOM)
+
+
+def test_no_rate_and_no_driver_is_ordinary_absolute_not_an_orphan():
+    """Labelling this 'no_driver' would send a planner hunting for production
+    data they never needed — the item simply has no rate."""
+    assert resolve_mode(False, driver_exists=False) == \
+        (Mode.ABSOLUTE, ModeSource.INFERRED)
+
+
 # --- discoverability ----------------------------------------------------------
 
 def test_derivable_items_are_flagged_so_the_option_is_discoverable():

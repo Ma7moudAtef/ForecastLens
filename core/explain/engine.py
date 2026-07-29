@@ -134,11 +134,13 @@ def rejection_reason(candidate: dict, winner: dict, meta: dict) -> str:
 # --- special-case caveats -----------------------------------------------------
 
 def orphan_caveat(line, output_type) -> str:
-    return (f"This series has a consumption rate but no driver record for "
+    return (f"This series has a consumption rate but no production record for "
             f"output '{output_type}' on line '{line}' exists in any period — "
-            "the denominator does not exist. The rate forecast stands, but "
-            "demand cannot be reconstructed until a driver is provided or a "
-            "planner declares the material independent.")
+            "the denominator does not exist, and no amount of extra history "
+            "will make it exist. The rate has been set aside and the "
+            "consumption quantity is forecast directly instead. Add "
+            "production rows for that line and output and it goes back to "
+            "being forecast as a rate on the next run.")
 
 
 def declared_mode_note(mode: str, source: str) -> str:

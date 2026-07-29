@@ -58,9 +58,12 @@ normal cold-start ladder (standard-rate anchor, then category prior).
 `(code136, line a, output C)` has a consumption rate but no driver record for
 output_type C in any period — the combination is absent from the driver sheet
 entirely. This is not a gap; the denominator does not exist. The engine
-detects it, emits a validation warning naming the series, excludes it from
-Relative reconstruction, and surfaces it on the Data page for planner
-resolution. It does not guess a denominator and does not delete the series.
+detects it, emits a validation warning naming the series, and surfaces it on
+the Data page. It does not guess a denominator and does not delete the series.
+
+**Superseded in part by D15**: the series is now resolved Absolute and its
+quantity forecast directly, rather than left as a Relative series whose
+demand can never be reconstructed.
 
 ## D7 — A combined rate is a driver-weighted mean of recorded rates
 
@@ -290,3 +293,51 @@ the summed demand bounds, it assumes the members' errors move together, which
 makes the band wider rather than narrower. A point estimate with no interval
 looks exactly as certain as a single well-behaved series, which is the one
 thing an aggregate never is.
+
+## D15 — A rate with no denominator anywhere is forecast as a quantity
+
+**Planner decision, narrowing D4.** D4 still holds for everything it was
+written about: mode is a property of the material's nature, and *missing
+driver periods are ordinary data gaps that never change it*. A relative
+series with a four-month hole in its production data stays Relative and falls
+through the cold-start ladder, exactly as before. There is still no coverage
+threshold.
+
+The orphan is a different thing. Its `(line, output_type)` appears in the
+driver sheet in **no period at all**, so the denominator does not exist and no
+amount of additional history will bring it into existence. Left Relative, such
+a series forecasts a rate that can never be turned into a quantity — an answer
+nobody can order against. Resolved Absolute, its consumption quantity is
+forecast directly, which is a usable answer.
+
+Precedence is therefore: planner UI declaration > bom declared mode > **orphan
+→ Absolute** > inference. A declaration still wins, so a planner who knows the
+driver data is coming can force Relative and wait.
+
+It is not a one-way door. Mode is re-resolved from the current data on every
+run, so the moment driver rows appear for that combination the series returns
+to Relative on its own. `mode_source` records `no_driver` so the reason is
+never a mystery, `is_orphan` stays 1 so the Data page keeps surfacing it, and
+the ORPHAN_SERIES warning says the rate was set aside and how to get it back.
+
+### Which reading of the rule, and why it did not matter here
+
+The rule as stated — "no cons_rate, or no corresponding driver value in the
+same date, line and output" — has a per-period reading and a per-series one.
+The per-period reading would flip a material's nature because of a single
+missing month, which is precisely what D4 forbids and what would drag a
+well-behaved rate series into quantity space for one bad period.
+
+On the sample workbook the two readings coincide exactly: **421 relative
+series have a driver in every single period, one has it in none, and not one
+series sits in between**. The series-level reading is implemented because it
+is the one that stays correct when a future workbook does have a series in
+between.
+
+### Consequence on the sample data
+
+`code136` is the only affected item and its only series is the orphan, so the
+item split moves from 121/127 to **122 Absolute / 126 Relative**. An item
+whose series span several `(line, output)` combinations, some orphaned and
+some not, would now carry both modes — legitimate, since mode is resolved per
+series, and the combined view already refuses to add a rate to a quantity.

@@ -163,7 +163,11 @@ def test_zero_driver_never_crashes():
     assert prep.observations.loc[0, "is_reliable"] == 0
 
 
-def test_orphan_series_stays_relative_with_no_reliable_periods():
+def test_a_rate_with_no_denominator_anywhere_is_forecast_absolute():
+    """The orphan. Its (line, output) has no production record in ANY period,
+    so the denominator does not exist and never will — a rate against nothing
+    cannot be reconstructed into a quantity. The quantity is forecast
+    directly instead, and the series is flagged so the planner knows."""
     raw = build_raw_tables({
         "bom": pd.DataFrame([_bom_row()]),
         "consumption": pd.DataFrame(
@@ -171,9 +175,22 @@ def test_orphan_series_stays_relative_with_no_reliable_periods():
         "prod": pd.DataFrame([_prod_row(output_type="x")]),
     })
     s = build_series(raw, CFG).series.iloc[0]
-    assert s["mode"] == "relative"      # NEVER flips to absolute
-    assert s["is_orphan"] == 1
-    assert s["n_reliable"] == 0         # falls through the cold-start ladder
+    assert s["mode"] == "absolute"
+    assert s["mode_source"] == "no_driver"
+    assert s["is_orphan"] == 1           # still surfaced, not silently fixed
+    assert s["n_reliable"] > 0           # a quantity IS fittable
+
+
+def test_a_declaration_still_outranks_the_orphan_rule():
+    raw = build_raw_tables({
+        "bom": pd.DataFrame([_bom_row()]),
+        "consumption": pd.DataFrame(
+            [_cons_row(cons_rate=0.5, output_type="C")]),
+        "prod": pd.DataFrame([_prod_row(output_type="x")]),
+    })
+    s = build_series(raw, CFG, mode_overrides={"A1": "relative"}).series.iloc[0]
+    assert s["mode"] == "relative"
+    assert s["mode_source"] == "declared_ui"
 
 
 def test_declared_mode_override_applies():

@@ -91,7 +91,7 @@ code128|b|x,SBA,,routed_intermittent,routed_sba,low,
 code128|b|y,StandardRateAnchor,,cold_start,cold_start_standard_rate,low,
 code12|a|y,SeasonalNaive,,compete,competition_winner,high,0.006
 code12|b|y,MovingAverage,6.0,compete,competition_winner,high,0.8691
-code136|a|C,CategoryPrior,,cold_start,cold_start_category_prior,low,
+code136|a|C,ETS,,compete,competition_winner,high,0.2873
 code137|a|x,StandardRateAnchor,,cold_start,cold_start_standard_rate,low,
 code137|a|y,StandardRateAnchor,,cold_start,cold_start_standard_rate,low,
 code137|b|x,SBA,,routed_intermittent,routed_sba,low,
